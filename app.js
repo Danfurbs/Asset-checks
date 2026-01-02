@@ -16,7 +16,7 @@ let childrenMap = new Map();
 let selectedAssetNumber = null;
 
 let referenceTrees = [];
-let referenceClassCodes = [];
+let referenceNameCodes = [];
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -378,7 +378,7 @@ function matchesReferenceGroup(asset, selectedGroup) {
 
   if (selectedGroup === "sc-group") {
     const value = asset.itemNameCodeDesc?.toLowerCase() || "";
-    return referenceClassCodes.some((code) => value.includes(code.toLowerCase()));
+    return referenceNameCodes.some((code) => value.includes(code.toLowerCase()));
   }
 
   return true;
@@ -439,7 +439,7 @@ function updateReferenceTree(tree) {
   referenceTreeStatus.textContent = "";
   referenceTree.innerHTML = "";
   referenceTree.appendChild(renderReferenceNode(tree.root));
-  referenceClassCodes = collectReferenceClasses(tree.root);
+  referenceNameCodes = collectReferenceNameCodes(tree.root);
   renderAssetList();
 }
 
@@ -453,15 +453,15 @@ function renderReferenceNode(node) {
   title.textContent = node.title;
   card.appendChild(title);
 
-  if (node.classCode) {
+  if (node.nameCodes?.length) {
     const code = document.createElement("span");
     code.className = "ref-code";
-    code.textContent = node.classCode;
+    code.textContent = node.nameCodes.join(", ");
     card.appendChild(code);
 
     const pill = document.createElement("span");
     pill.className = "ref-pill ref-pill-class";
-    pill.textContent = "Asset Class";
+    pill.textContent = "Item Name Codes";
     card.appendChild(pill);
   }
 
@@ -478,17 +478,17 @@ function renderReferenceNode(node) {
   return item;
 }
 
-function collectReferenceClasses(node) {
+function collectReferenceNameCodes(node) {
   const codes = [];
   if (!node) {
     return codes;
   }
-  if (node.classCode) {
-    codes.push(node.classCode);
+  if (node.nameCodes?.length) {
+    codes.push(...node.nameCodes);
   }
   if (node.children?.length) {
     node.children.forEach((child) => {
-      codes.push(...collectReferenceClasses(child));
+      codes.push(...collectReferenceNameCodes(child));
     });
   }
   return Array.from(new Set(codes));
