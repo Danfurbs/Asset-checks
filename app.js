@@ -532,9 +532,6 @@ function isReferenceMismatch(asset) {
   if (!parentCode || !referenceNameCodes.includes(parentCode)) {
     return false;
   }
-  if (referenceIgnoredCodes.has(parentCode)) {
-    return false;
-  }
   const allowedParents = referenceParentMap.get(assetCode) || new Set();
   return !allowedParents.has(parentCode);
 }
