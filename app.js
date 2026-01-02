@@ -552,6 +552,8 @@ function loadReferenceTrees() {
     return;
   }
 
+  const embeddedData = getEmbeddedReferenceTrees();
+
   fetch("reference-trees.json")
     .then((response) => {
       if (!response.ok) {
@@ -560,27 +562,49 @@ function loadReferenceTrees() {
       return response.json();
     })
     .then((data) => {
-      referenceTrees = Array.isArray(data?.trees) ? data.trees : [];
-      referenceTreeSelect.innerHTML = "";
-      referenceTrees.forEach((tree) => {
-        const option = document.createElement("option");
-        option.value = tree.id;
-        option.textContent = tree.label;
-        referenceTreeSelect.appendChild(option);
-      });
-
-      if (referenceTrees.length === 0) {
-        referenceTreeStatus.textContent = "No reference trees available.";
-        return;
-      }
-
-      referenceTreeSelect.value = referenceTrees[0].id;
-      updateReferenceTree(referenceTrees[0]);
+      applyReferenceTrees(data);
     })
     .catch(() => {
+      if (embeddedData) {
+        applyReferenceTrees(embeddedData);
+        return;
+      }
       referenceTreeStatus.textContent =
         "Unable to load the reference tree definition.";
     });
+}
+
+function getEmbeddedReferenceTrees() {
+  const script = document.getElementById("referenceTreesData");
+  if (!script?.textContent) {
+    return null;
+  }
+  try {
+    return JSON.parse(script.textContent);
+  } catch (error) {
+    console.error("Invalid embedded reference tree data.", error);
+    return null;
+  }
+}
+
+function applyReferenceTrees(data) {
+  referenceTrees = Array.isArray(data?.trees) ? data.trees : [];
+  referenceTreeSelect.innerHTML = "";
+  referenceTrees.forEach((tree) => {
+    const option = document.createElement("option");
+    option.value = tree.id;
+    option.textContent = tree.label;
+    referenceTreeSelect.appendChild(option);
+  });
+
+  if (referenceTrees.length === 0) {
+    referenceTreeStatus.textContent = "No reference trees available.";
+    return;
+  }
+
+  referenceTreeStatus.textContent = "";
+  referenceTreeSelect.value = referenceTrees[0].id;
+  updateReferenceTree(referenceTrees[0]);
 }
 
 function updateReferenceTree(tree) {
