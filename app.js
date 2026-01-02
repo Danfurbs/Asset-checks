@@ -35,6 +35,19 @@ function findColumn(headers, candidates) {
   return -1;
 }
 
+function findHeaderRow(rows, maxScan = 5) {
+  const scanLimit = Math.min(rows.length, maxScan);
+  for (let i = 0; i < scanLimit; i += 1) {
+    const headers = rows[i] || [];
+    const assetIdx = findColumn(headers, COLUMN_ALIASES.assetNumber);
+    const parentIdx = findColumn(headers, COLUMN_ALIASES.parentAssetNumber);
+    if (assetIdx !== -1 && parentIdx !== -1) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function buildMaps(rows, headers) {
   assetMap = new Map();
   childrenMap = new Map();
@@ -268,8 +281,20 @@ function handleFile(file) {
       return;
     }
 
-    const headers = rows[0];
-    const dataRows = rows.slice(1);
+    const headerRowIndex = findHeaderRow(rows);
+    if (headerRowIndex === -1) {
+      listStatus.textContent =
+        "Unable to locate header row. Ensure Asset Number and Parent Asset Number are present.";
+      return;
+    }
+
+    const headers = rows[headerRowIndex];
+    const dataRows = rows.slice(headerRowIndex + 1);
+
+    if (dataRows.length === 0) {
+      listStatus.textContent = "No data rows found beneath the header row.";
+      return;
+    }
 
     try {
       buildMaps(dataRows, headers);
