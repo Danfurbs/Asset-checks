@@ -537,11 +537,7 @@ function isReferenceMismatch(asset) {
 }
 
 function hasAssetError(asset) {
-  const missingParent =
-    asset.parentAssetNumber &&
-    !assetMap.has(asset.parentAssetNumber) &&
-    !referenceIgnoredCodes.has(extractNameCode(asset.itemNameCodeDesc));
-  return isReferenceMismatch(asset) || missingParent;
+  return isReferenceMismatch(asset);
 }
 
 function selectAsset(assetNumber) {
@@ -558,8 +554,6 @@ function loadReferenceTrees() {
     return;
   }
 
-  const embeddedData = getEmbeddedReferenceTrees();
-
   fetch("reference-trees.json")
     .then((response) => {
       if (!response.ok) {
@@ -571,26 +565,9 @@ function loadReferenceTrees() {
       applyReferenceTrees(data);
     })
     .catch(() => {
-      if (embeddedData) {
-        applyReferenceTrees(embeddedData);
-        return;
-      }
       referenceTreeStatus.textContent =
         "Unable to load the reference tree definition.";
     });
-}
-
-function getEmbeddedReferenceTrees() {
-  const script = document.getElementById("referenceTreesData");
-  if (!script?.textContent) {
-    return null;
-  }
-  try {
-    return JSON.parse(script.textContent);
-  } catch (error) {
-    console.error("Invalid embedded reference tree data.", error);
-    return null;
-  }
 }
 
 function applyReferenceTrees(data) {

@@ -24,8 +24,8 @@
       }
     },
     {
-      "id": "Track IDs",
-      "label": "Track ID",
+      "id": "track-ids",
+      "label": "Track IDs",
       "root": {
         "title": "ELR",
         "nameCodes": ["15"],
