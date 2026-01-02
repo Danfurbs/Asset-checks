@@ -391,7 +391,7 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.9rem;
   position: relative;
 }
 
@@ -463,52 +463,66 @@ body {
 }
 
 .tree-children {
-  display: flex;
+  display: inline-flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 2rem;
-  padding-top: 2.25rem;
+  align-self: center;
+  gap: 2.5rem 3rem;
+  padding-top: 2.5rem;
   position: relative;
 }
 
 .tree-children::before {
   content: "";
   position: absolute;
-  top: 0.5rem;
+  top: 0.35rem;
   left: 50%;
   transform: translateX(-50%);
-  width: 4px;
-  height: 22px;
-  background: #6366f1;
+  width: 3px;
+  height: 28px;
+  background: #94a3b8;
   border-radius: 999px;
 }
 
 .tree-children::after {
   content: "";
   position: absolute;
-  top: 0.5rem;
-  left: 10%;
-  right: 10%;
-  height: 4px;
-  background: #6366f1;
+  top: 0.35rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  height: 3px;
+  background: #94a3b8;
   border-radius: 999px;
 }
 
 .tree-children > .tree-node {
   position: relative;
-  padding-top: 1rem;
+  padding-top: 1.5rem;
 }
 
 .tree-children > .tree-node::before {
   content: "";
   position: absolute;
-  top: 0.5rem;
+  top: 0.35rem;
   left: 50%;
   transform: translateX(-50%);
-  width: 4px;
-  height: 24px;
-  background: #6366f1;
+  width: 3px;
+  height: 26px;
+  background: #94a3b8;
   border-radius: 999px;
+}
+
+.tree-children > .tree-node::after {
+  content: "";
+  position: absolute;
+  top: 0.1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 2px solid #6366f1;
 }
 
 @media (max-width: 900px) {
