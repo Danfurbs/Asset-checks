@@ -6,6 +6,7 @@
       "root": {
         "title": "S&C Unit",
         "nameCodes": ["AU100", "AU120", "AU140", "AU160", "AU190"],
+        "ignoreFromErrors": true
         "children": [
           {
             "title": "Switch Panel",
