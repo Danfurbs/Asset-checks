@@ -81,6 +81,16 @@
           <div class="tree-panel">
             <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
             <div id="treeContainer" class="tree-container"></div>
+            <div class="tree-warnings" aria-live="polite">
+              <div class="tree-warnings-header">
+                <h3>Tree warnings</h3>
+                <span id="treeWarningsCount" class="tree-warnings-count"></span>
+              </div>
+              <p id="treeWarningsStatus" class="tree-warnings-status">
+                Select an asset to see warnings for the family tree.
+              </p>
+              <ul id="treeWarningsList" class="tree-warnings-list"></ul>
+            </div>
           </div>
           <aside class="reference-panel" aria-label="Relationship reference trees">
             <div class="reference-header">
