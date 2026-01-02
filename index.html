@@ -103,6 +103,50 @@
       </section>
     </main>
 
+    <script id="referenceTreesData" type="application/json">
+      {
+        "trees": [
+          {
+            "id": "switches-crossings",
+            "label": "Switches and Crossings",
+            "root": {
+              "title": "S&C Unit",
+              "nameCodes": ["AU100", "AU120", "AU140", "AU160", "AU190"],
+              "ignoreFromErrors": true,
+              "children": [
+                {
+                  "title": "Switch Panel",
+                  "nameCodes": ["AP100"],
+                  "children": [
+                    {
+                      "title": "Left Hand Half Set",
+                      "nameCodes": ["AS100"]
+                    },
+                    {
+                      "title": "Right Hand Half Set",
+                      "nameCodes": ["AS110"]
+                    },
+                    {
+                      "title": "Stretcher Bars",
+                      "nameCodes": ["ST100"]
+                    }
+                  ]
+                },
+                {
+                  "title": "Crossing (S&C)",
+                  "nameCodes": ["AX200", "AX210"]
+                },
+                {
+                  "title": "Point Heater",
+                  "nameCodes": ["CD100"],
+                  "ignoreFromErrors": true
+                }
+              ]
+            }
+          }
+        ]
+      }
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
   </body>
