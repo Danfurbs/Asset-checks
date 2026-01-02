@@ -11,6 +11,9 @@ const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
 const treeStatus = document.getElementById("treeStatus");
 const treeContainer = document.getElementById("treeContainer");
+const treeWarningsCount = document.getElementById("treeWarningsCount");
+const treeWarningsStatus = document.getElementById("treeWarningsStatus");
+const treeWarningsList = document.getElementById("treeWarningsList");
 const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
@@ -489,22 +492,120 @@ function renderTreeNode(node) {
   return nodeWrapper;
 }
 
+function collectTreeWarnings(node, warnings = [], visited = new Set()) {
+  if (!node) {
+    return warnings;
+  }
+
+  const nodeKey = `${node.missing ? "missing" : "asset"}-${node.assetNumber || "unknown"}`;
+  if (visited.has(nodeKey)) {
+    return warnings;
+  }
+  visited.add(nodeKey);
+
+  if (node.missing) {
+    warnings.push({
+      type: "missing",
+      assetNumber: node.assetNumber || "Unknown asset",
+      message: "Asset not in download.",
+    });
+  } else {
+    const assetRecord = assetMap.get(node.assetNumber);
+    if (assetRecord && isReferenceMismatch(assetRecord)) {
+      warnings.push({
+        type: "mismatch",
+        assetNumber: node.assetNumber,
+        message: "Does not follow the reference hierarchy.",
+      });
+    }
+    if (assetRecord) {
+      const missingChildren = getMissingReferenceChildren(assetRecord);
+      if (missingChildren.length) {
+        warnings.push({
+          type: "expected",
+          assetNumber: node.assetNumber,
+          message: `Missing expected child item class${missingChildren.length > 1 ? "es" : ""}: ${missingChildren.join(", ")}.`,
+        });
+      }
+    }
+  }
+
+  node.children?.forEach((child) => collectTreeWarnings(child, warnings, visited));
+  return warnings;
+}
+
+function resetTreeWarnings(message) {
+  if (treeWarningsStatus) {
+    treeWarningsStatus.textContent = message;
+  }
+  if (treeWarningsCount) {
+    treeWarningsCount.textContent = "";
+  }
+  if (treeWarningsList) {
+    treeWarningsList.innerHTML = "";
+  }
+}
+
+function renderTreeWarnings(tree) {
+  if (!treeWarningsList || !treeWarningsStatus || !treeWarningsCount) {
+    return;
+  }
+
+  const warnings = collectTreeWarnings(tree);
+  treeWarningsList.innerHTML = "";
+  if (!warnings.length) {
+    treeWarningsStatus.textContent = "No warnings for this tree.";
+    treeWarningsCount.textContent = "0 warnings";
+    return;
+  }
+
+  treeWarningsStatus.textContent = "";
+  treeWarningsCount.textContent = `${warnings.length} warning${warnings.length === 1 ? "" : "s"}`;
+
+  warnings.forEach((warning) => {
+    const item = document.createElement("li");
+    item.className = "tree-warning-item";
+
+    const icon = document.createElement("span");
+    icon.className = `tree-warning-icon tree-warning-icon-${warning.type}`;
+    icon.textContent = "!";
+    item.appendChild(icon);
+
+    const text = document.createElement("div");
+    text.className = "tree-warning-text";
+
+    const title = document.createElement("strong");
+    title.textContent = warning.assetNumber;
+    text.appendChild(title);
+
+    const message = document.createElement("span");
+    message.textContent = ` — ${warning.message}`;
+    text.appendChild(message);
+    item.appendChild(text);
+
+    treeWarningsList.appendChild(item);
+  });
+}
+
 function renderTree() {
   treeContainer.innerHTML = "";
 
   if (!selectedAssetNumber) {
     treeStatus.textContent = "Select an asset to view its family tree.";
+    resetTreeWarnings("Select an asset to see warnings for the family tree.");
     return;
   }
 
   const tree = buildFamilyTree(selectedAssetNumber);
   if (!tree) {
     treeStatus.textContent = "Unable to build a tree for this asset.";
+    resetTreeWarnings("No warnings available for this tree.");
     return;
   }
 
   treeStatus.textContent = "";
   treeContainer.appendChild(renderTreeNode(tree));
+  renderTreeWarnings(tree);
 }
 
 function matchesReferenceGroup(asset, selectedGroup) {
@@ -560,11 +661,13 @@ function hasAssetError(asset) {
 }
 
 function selectAsset(assetNumber) {
-  if (!assetNumber || assetNumber === selectedAssetNumber) {
+  if (!assetNumber) {
     return;
   }
-  selectedAssetNumber = assetNumber;
-  renderAssetList();
+  if (assetNumber !== selectedAssetNumber) {
+    selectedAssetNumber = assetNumber;
+    renderAssetList();
+  }
   renderTree();
 }
 
@@ -624,6 +727,9 @@ function updateReferenceTree(tree) {
   referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   referenceChildMap = buildReferenceChildMap(tree.root);
   renderAssetList();
+  if (selectedAssetNumber) {
+    renderTree();
+  }
 }
 
 function renderReferenceNode(node) {
