@@ -22,12 +22,17 @@
       <section class="panel panel-left">
         <div class="panel-header">
           <h2>Assets</h2>
-          <input
-            type="search"
-            id="filterInput"
-            placeholder="Filter by asset number or description"
-            aria-label="Filter assets"
-          />
+          <div class="filter-controls">
+            <input
+              type="search"
+              id="filterInput"
+              placeholder="Filter by asset number or description"
+              aria-label="Filter assets"
+            />
+            <select id="itemNameFilter" aria-label="Filter by item name code and description">
+              <option value="all">All Item Name Code &amp; Desc</option>
+            </select>
+          </div>
         </div>
         <div id="listStatus" class="status">Upload a file to load assets.</div>
         <ul id="assetList" class="asset-list"></ul>
