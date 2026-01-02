@@ -1,5 +1,6 @@
 const fileInput = document.getElementById("fileInput");
 const filterInput = document.getElementById("filterInput");
+const itemNameFilter = document.getElementById("itemNameFilter");
 const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
 const treeStatus = document.getElementById("treeStatus");
@@ -16,6 +17,11 @@ const COLUMN_ALIASES = {
   assetStatus: ["Asset Status", "Status"],
   assetDesc1: ["Asset Desc 1", "Asset Description 1", "Asset Desc"],
   assetDesc2: ["Asset Desc 2", "Asset Description 2"],
+  itemNameCodeDesc: [
+    "Item Name Code & Desc",
+    "Item Name Code and Desc",
+    "Item Name Code Desc",
+  ],
 };
 
 function normalizeHeader(value) {
@@ -67,6 +73,7 @@ function buildMaps(rows, headers) {
   const statusIdx = findColumn(headers, COLUMN_ALIASES.assetStatus);
   const desc1Idx = findColumn(headers, COLUMN_ALIASES.assetDesc1);
   const desc2Idx = findColumn(headers, COLUMN_ALIASES.assetDesc2);
+  const itemNameIdx = findColumn(headers, COLUMN_ALIASES.itemNameCodeDesc);
 
   if (assetIdx === -1 || parentIdx === -1) {
     throw new Error(
@@ -85,6 +92,8 @@ function buildMaps(rows, headers) {
       const assetStatus = statusIdx !== -1 ? row[statusIdx]?.toString().trim() : "";
       const assetDesc1 = desc1Idx !== -1 ? row[desc1Idx]?.toString().trim() : "";
       const assetDesc2 = desc2Idx !== -1 ? row[desc2Idx]?.toString().trim() : "";
+      const itemNameCodeDesc =
+        itemNameIdx !== -1 ? row[itemNameIdx]?.toString().trim() : "";
 
       return {
         assetNumber,
@@ -92,6 +101,7 @@ function buildMaps(rows, headers) {
         assetStatus,
         assetDesc1,
         assetDesc2,
+        itemNameCodeDesc,
       };
     })
     .filter(Boolean);
@@ -111,13 +121,61 @@ function buildMaps(rows, headers) {
   });
 }
 
+function populateItemNameFilter() {
+  const uniqueValues = new Set();
+  let hasEmpty = false;
+
+  assets.forEach((asset) => {
+    const value = asset.itemNameCodeDesc?.trim() || "";
+    if (value) {
+      uniqueValues.add(value);
+    } else {
+      hasEmpty = true;
+    }
+  });
+
+  itemNameFilter.innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All Item Name Code & Desc";
+  itemNameFilter.appendChild(allOption);
+
+  if (hasEmpty) {
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "__empty__";
+    emptyOption.textContent = "No Item Name Code & Desc";
+    itemNameFilter.appendChild(emptyOption);
+  }
+
+  Array.from(uniqueValues)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((value) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = value;
+      itemNameFilter.appendChild(option);
+    });
+}
+
 function renderAssetList() {
   const query = filterInput.value.trim().toLowerCase();
+  const selectedItemName = itemNameFilter.value;
   assetList.innerHTML = "";
 
   const filtered = assets.filter((asset) => {
-    const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2}`.toLowerCase();
-    return label.includes(query);
+    const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc}`.toLowerCase();
+    const matchesQuery = label.includes(query);
+    const itemValue = asset.itemNameCodeDesc?.trim() || "";
+
+    if (selectedItemName === "all") {
+      return matchesQuery;
+    }
+
+    if (selectedItemName === "__empty__") {
+      return matchesQuery && !itemValue;
+    }
+
+    return matchesQuery && itemValue === selectedItemName;
   });
 
   filtered
@@ -172,6 +230,7 @@ function buildSubtree(assetNumber, visited = new Set()) {
     assetStatus: asset.assetStatus,
     assetDesc1: asset.assetDesc1,
     assetDesc2: asset.assetDesc2,
+    itemNameCodeDesc: asset.itemNameCodeDesc,
     missing: false,
     children,
   };
@@ -202,6 +261,7 @@ function buildFamilyTree(assetNumber) {
       assetStatus: parentAsset.assetStatus,
       assetDesc1: parentAsset.assetDesc1,
       assetDesc2: parentAsset.assetDesc2,
+      itemNameCodeDesc: parentAsset.itemNameCodeDesc,
       missing: false,
       children: [root],
     };
@@ -231,10 +291,23 @@ function createNodeCard(node) {
   }
 
   const desc = node.assetDesc1 || node.assetDesc2 || "";
-  card.textContent = node.assetNumber;
+  const itemNameCodeDesc = node.itemNameCodeDesc || "";
+  const assetNumber = node.assetNumber || "";
+  const normalizedAssetNumber = assetNumber.toString().padStart(12, "0");
+  const assetLink = document.createElement("a");
+  assetLink.href = `http://ellipse-ell9p.unix.ukrail.net/html/ui?&application=mse600&type=read&equipmentNo=${normalizedAssetNumber}`;
+  assetLink.textContent = assetNumber;
+  assetLink.target = "_blank";
+  assetLink.rel = "noopener noreferrer";
+  card.appendChild(assetLink);
   if (desc) {
     const small = document.createElement("small");
     small.textContent = desc;
+    card.appendChild(small);
+  }
+  if (itemNameCodeDesc) {
+    const small = document.createElement("small");
+    small.textContent = itemNameCodeDesc;
     card.appendChild(small);
   }
   return card;
@@ -314,6 +387,7 @@ function handleFile(file) {
       return;
     }
 
+    populateItemNameFilter();
     selectedAssetNumber = assets[0]?.assetNumber || null;
     renderAssetList();
     renderTree();
@@ -330,5 +404,9 @@ fileInput.addEventListener("change", (event) => {
 });
 
 filterInput.addEventListener("input", () => {
+  renderAssetList();
+});
+
+itemNameFilter.addEventListener("change", () => {
   renderAssetList();
 });
