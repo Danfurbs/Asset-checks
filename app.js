@@ -18,6 +18,10 @@ const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
 const exportButton = document.getElementById("exportButton");
+const parentSelectModal = document.getElementById("parentSelectModal");
+const parentSelectList = document.getElementById("parentSelectList");
+const parentSelectTitle = document.getElementById("parentSelectTitle");
+const parentSelectCancel = document.getElementById("parentSelectCancel");
 
 let assets = [];
 let assetMap = new Map();
@@ -621,7 +625,12 @@ function renderTreeNode(node) {
         if (!assetNumber) {
           return;
         }
-        updateAssetParent(assetNumber, node.assetNumber);
+        const candidates = getDropCandidates(event, node.assetNumber);
+        if (candidates.length > 1) {
+          openParentSelectModal(assetNumber, candidates);
+          return;
+        }
+        updateAssetParent(assetNumber, candidates[0]);
       });
     }
     node.children.forEach((child) => {
@@ -806,6 +815,65 @@ function hasAssetError(asset) {
 
 function shouldShowTick(asset) {
   return initialMismatchAssets.has(asset.assetNumber) && !isReferenceMismatch(asset);
+}
+
+function openParentSelectModal(assetNumber, parentOptions) {
+  if (!parentSelectModal || !parentSelectList) {
+    return;
+  }
+  parentSelectList.innerHTML = "";
+  if (parentSelectTitle) {
+    parentSelectTitle.textContent = `Select parent for ${assetNumber}`;
+  }
+  parentOptions.forEach((parentNumber) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "modal-option";
+    button.textContent = parentNumber;
+    const parentAsset = assetMap.get(parentNumber);
+    if (parentAsset) {
+      const detail = document.createElement("small");
+      detail.textContent =
+        parentAsset.assetDesc1 || parentAsset.assetDesc2 || parentAsset.itemNameCodeDesc;
+      if (detail.textContent) {
+        button.appendChild(detail);
+      }
+    }
+    button.addEventListener("click", () => {
+      closeParentSelectModal();
+      updateAssetParent(assetNumber, parentNumber);
+    });
+    parentSelectList.appendChild(button);
+  });
+
+  if (parentSelectModal) {
+    parentSelectModal.classList.remove("hidden");
+    parentSelectModal.setAttribute("aria-hidden", "false");
+  }
+}
+
+function closeParentSelectModal() {
+  if (!parentSelectModal) {
+    return;
+  }
+  parentSelectModal.classList.add("hidden");
+  parentSelectModal.setAttribute("aria-hidden", "true");
+  if (parentSelectList) {
+    parentSelectList.innerHTML = "";
+  }
+}
+
+function getDropCandidates(event, fallbackParentNumber) {
+  const elements = document.elementsFromPoint(event.clientX, event.clientY);
+  const parentNumbers = elements
+    .filter((element) => element.classList?.contains("tree-children"))
+    .map((element) => element.dataset.parentNumber)
+    .filter(Boolean);
+  const unique = Array.from(new Set(parentNumbers));
+  if (unique.length === 0 && fallbackParentNumber) {
+    return [fallbackParentNumber];
+  }
+  return unique;
 }
 
 function isDescendant(assetNumber, potentialParent) {
@@ -1258,6 +1326,25 @@ errorOnlyToggle.addEventListener("change", () => {
 if (exportButton) {
   exportButton.addEventListener("click", () => {
     exportChanges();
+  });
+}
+
+if (parentSelectCancel) {
+  parentSelectCancel.addEventListener("click", () => {
+    closeParentSelectModal();
+  });
+}
+
+if (parentSelectModal) {
+  parentSelectModal.addEventListener("click", (event) => {
+    if (event.target === parentSelectModal || event.target.classList.contains("modal-backdrop")) {
+      closeParentSelectModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !parentSelectModal.classList.contains("hidden")) {
+      closeParentSelectModal();
+    }
   });
 }
 

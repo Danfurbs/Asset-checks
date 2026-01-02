@@ -720,6 +720,90 @@ body {
   background: #ecfdf5;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal.hidden {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.modal-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: min(420px, 90vw);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.2);
+  z-index: 1;
+}
+
+.modal-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+.modal-description {
+  margin: 0 0 1rem;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.modal-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.modal-option {
+  border: 1px solid #cbd5f5;
+  background: #f8fafc;
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.modal-option small {
+  display: block;
+  font-weight: 400;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+.modal-option:hover,
+.modal-option:focus {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1.2rem;
+}
+
+.modal-cancel {
+  border: none;
+  background: #e5e7eb;
+  color: #111827;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
 .tree-children > .tree-node + .tree-node {
   margin-top: 0;
 }
