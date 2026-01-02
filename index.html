@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Asset Family Tree Viewer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Asset Family Tree Viewer</h1>
+        <p>Upload your asset export to explore parent/child relationships.</p>
+      </div>
+      <label class="file-upload">
+        <span>Upload Excel/CSV</span>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+      </label>
+    </header>
+
+    <main class="layout">
+      <section class="panel panel-left">
+        <div class="panel-header">
+          <h2>Assets</h2>
+          <input
+            type="search"
+            id="filterInput"
+            placeholder="Filter by asset number or description"
+            aria-label="Filter assets"
+          />
+        </div>
+        <div id="listStatus" class="status">Upload a file to load assets.</div>
+        <ul id="assetList" class="asset-list"></ul>
+      </section>
+
+      <section class="panel panel-right">
+        <div class="panel-header">
+          <h2>Family Tree</h2>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-box"></span>Active</span>
+            <span class="legend-item"><span class="legend-box legend-missing"></span>Asset not in download</span>
+            <span class="legend-item"><span class="legend-box legend-obsolete"></span>Obsolete record</span>
+          </div>
+        </div>
+        <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
+        <div id="treeContainer" class="tree-container"></div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
