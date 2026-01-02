@@ -129,6 +129,9 @@ body {
   border-radius: 8px;
   cursor: pointer;
   transition: border 0.2s ease, background 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .asset-button:hover,
@@ -141,6 +144,23 @@ body {
   background: #4338ca;
   color: #fff;
   border-color: #4338ca;
+}
+
+.asset-alert {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.asset-label {
+  flex: 1;
 }
 
 .legend {

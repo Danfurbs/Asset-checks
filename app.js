@@ -17,6 +17,7 @@ let selectedAssetNumber = null;
 
 let referenceTrees = [];
 let referenceNameCodes = [];
+let referenceParentMap = new Map();
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -198,9 +199,20 @@ function renderAssetList() {
         button.classList.add("selected");
       }
       const description = asset.assetDesc1 || asset.assetDesc2 || "";
-      button.textContent = description
+      const mismatch = isReferenceMismatch(asset);
+      if (mismatch) {
+        const alert = document.createElement("span");
+        alert.className = "asset-alert";
+        alert.textContent = "!";
+        alert.title = "Does not follow the reference hierarchy";
+        button.appendChild(alert);
+      }
+      const label = document.createElement("span");
+      label.className = "asset-label";
+      label.textContent = description
         ? `${asset.assetNumber} • ${description}`
         : asset.assetNumber;
+      button.appendChild(label);
       button.addEventListener("click", () => {
         selectAsset(asset.assetNumber);
       });
@@ -377,11 +389,40 @@ function matchesReferenceGroup(asset, selectedGroup) {
   }
 
   if (selectedGroup === "sc-group") {
-    const value = asset.itemNameCodeDesc?.toLowerCase() || "";
-    return referenceNameCodes.some((code) => value.includes(code.toLowerCase()));
+    const value = extractNameCode(asset.itemNameCodeDesc);
+    return value ? referenceNameCodes.includes(value) : false;
   }
 
   return true;
+}
+
+function extractNameCode(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  const match = trimmed.match(/^[A-Za-z0-9]+/);
+  return match ? match[0].toUpperCase() : "";
+}
+
+function isReferenceMismatch(asset) {
+  const assetCode = extractNameCode(asset.itemNameCodeDesc);
+  if (!assetCode || !referenceNameCodes.includes(assetCode)) {
+    return false;
+  }
+
+  if (!asset.parentAssetNumber) {
+    return false;
+  }
+
+  const parentAsset = assetMap.get(asset.parentAssetNumber);
+  if (!parentAsset) {
+    return true;
+  }
+
+  const parentCode = extractNameCode(parentAsset.itemNameCodeDesc);
+  const allowedParents = referenceParentMap.get(assetCode) || new Set();
+  return !allowedParents.has(parentCode);
 }
 
 function selectAsset(assetNumber) {
@@ -440,6 +481,7 @@ function updateReferenceTree(tree) {
   referenceTree.innerHTML = "";
   referenceTree.appendChild(renderReferenceNode(tree.root));
   referenceNameCodes = collectReferenceNameCodes(tree.root);
+  referenceParentMap = buildReferenceParentMap(tree.root);
   renderAssetList();
 }
 
@@ -484,7 +526,7 @@ function collectReferenceNameCodes(node) {
     return codes;
   }
   if (node.nameCodes?.length) {
-    codes.push(...node.nameCodes);
+    codes.push(...node.nameCodes.map((code) => code.toUpperCase()));
   }
   if (node.children?.length) {
     node.children.forEach((child) => {
@@ -492,6 +534,39 @@ function collectReferenceNameCodes(node) {
     });
   }
   return Array.from(new Set(codes));
+}
+
+function buildReferenceParentMap(node, parentCodes = []) {
+  const map = new Map();
+  if (!node) {
+    return map;
+  }
+
+  const currentCodes = (node.nameCodes || []).map((code) => code.toUpperCase());
+  if (currentCodes.length > 0) {
+    currentCodes.forEach((code) => {
+      if (!map.has(code)) {
+        map.set(code, new Set());
+      }
+      parentCodes.forEach((parentCode) => {
+        map.get(code).add(parentCode);
+      });
+    });
+  }
+
+  if (node.children?.length) {
+    node.children.forEach((child) => {
+      const childMap = buildReferenceParentMap(child, currentCodes);
+      childMap.forEach((value, key) => {
+        if (!map.has(key)) {
+          map.set(key, new Set());
+        }
+        value.forEach((item) => map.get(key).add(item));
+      });
+    });
+  }
+
+  return map;
 }
 
 function handleFile(file) {
