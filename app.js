@@ -1,5 +1,6 @@
 const fileInput = document.getElementById("fileInput");
 const filterInput = document.getElementById("filterInput");
+const groupFilter = document.getElementById("groupFilter");
 const itemNameFilter = document.getElementById("itemNameFilter");
 const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
@@ -10,6 +11,19 @@ let assets = [];
 let assetMap = new Map();
 let childrenMap = new Map();
 let selectedAssetNumber = null;
+
+const SC_REFERENCE_CODES = [
+  "10100RTK0003",
+  "10100RTK0008",
+  "10100RTK0009",
+  "ZZ000RTK0001",
+  "AU Class",
+  "AP Class",
+  "AX Class",
+  "CD Class",
+  "AS100RTK0001",
+  "ST Class",
+];
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -160,22 +174,24 @@ function populateItemNameFilter() {
 function renderAssetList() {
   const query = filterInput.value.trim().toLowerCase();
   const selectedItemName = itemNameFilter.value;
+  const selectedGroup = groupFilter.value;
   assetList.innerHTML = "";
 
   const filtered = assets.filter((asset) => {
     const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc}`.toLowerCase();
     const matchesQuery = label.includes(query);
     const itemValue = asset.itemNameCodeDesc?.trim() || "";
+    const matchesGroup = matchesReferenceGroup(asset, selectedGroup);
 
     if (selectedItemName === "all") {
-      return matchesQuery;
+      return matchesQuery && matchesGroup;
     }
 
     if (selectedItemName === "__empty__") {
-      return matchesQuery && !itemValue;
+      return matchesQuery && !itemValue && matchesGroup;
     }
 
-    return matchesQuery && itemValue === selectedItemName;
+    return matchesQuery && itemValue === selectedItemName && matchesGroup;
   });
 
   filtered
@@ -193,9 +209,7 @@ function renderAssetList() {
         ? `${asset.assetNumber} • ${description}`
         : asset.assetNumber;
       button.addEventListener("click", () => {
-        selectedAssetNumber = asset.assetNumber;
-        renderAssetList();
-        renderTree();
+        selectAsset(asset.assetNumber);
       });
       li.appendChild(button);
       assetList.appendChild(li);
@@ -310,6 +324,17 @@ function createNodeCard(node) {
     small.textContent = itemNameCodeDesc;
     card.appendChild(small);
   }
+  card.addEventListener("click", () => {
+    selectAsset(node.assetNumber);
+  });
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectAsset(node.assetNumber);
+    }
+  });
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
   return card;
 }
 
@@ -348,6 +373,30 @@ function renderTree() {
 
   treeStatus.textContent = "";
   treeContainer.appendChild(renderTreeNode(tree));
+}
+
+function matchesReferenceGroup(asset, selectedGroup) {
+  if (selectedGroup === "all") {
+    return true;
+  }
+
+  if (selectedGroup === "sc-group") {
+    const value = asset.itemNameCodeDesc?.toLowerCase() || "";
+    return SC_REFERENCE_CODES.some((code) =>
+      value.includes(code.toLowerCase())
+    );
+  }
+
+  return true;
+}
+
+function selectAsset(assetNumber) {
+  if (!assetNumber || assetNumber === selectedAssetNumber) {
+    return;
+  }
+  selectedAssetNumber = assetNumber;
+  renderAssetList();
+  renderTree();
 }
 
 function handleFile(file) {
@@ -404,6 +453,10 @@ fileInput.addEventListener("change", (event) => {
 });
 
 filterInput.addEventListener("input", () => {
+  renderAssetList();
+});
+
+groupFilter.addEventListener("change", () => {
   renderAssetList();
 });
 

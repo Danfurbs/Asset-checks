@@ -29,6 +29,10 @@
               placeholder="Filter by asset number or description"
               aria-label="Filter assets"
             />
+            <select id="groupFilter" aria-label="Filter by relationship group">
+              <option value="all">All assets</option>
+              <option value="sc-group">S&amp;C group assets</option>
+            </select>
             <select id="itemNameFilter" aria-label="Filter by item name code and description">
               <option value="all">All Item Name Code &amp; Desc</option>
             </select>
@@ -83,8 +87,8 @@
                     <ul>
                       <li>
                         <div class="ref-node">
-                          <span class="ref-title">S&amp;C Area</span>
-                          <span class="ref-code">10100RTK0009</span>
+                          <span class="ref-title">S&amp;C Area / S&amp;C Junction Area</span>
+                          <span class="ref-code">10100RTK0009 · ZZ000RTK0001</span>
                           <span class="ref-pill ref-pill-eg">EGI Code</span>
                         </div>
                         <ul>
@@ -142,14 +146,6 @@
                             </ul>
                           </li>
                         </ul>
-                      </li>
-                      <li>
-                        <div class="ref-node">
-                          <span class="ref-title">S&amp;C Junction Area</span>
-                          <span class="ref-code">ZZ000RTK0001</span>
-                          <span class="ref-pill ref-pill-eg">EGI Code</span>
-                          <span class="ref-join">Joins to S&amp;C Unit</span>
-                        </div>
                       </li>
                     </ul>
                   </li>
