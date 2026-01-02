@@ -38,5 +38,25 @@
         ]
       }
     }
+
+      {"id": "Track IDs",
+      "label": "Track ID",
+      "root": {
+        "title": "ELR",
+        "nameCodes": ["15"],
+        "ignoreFromErrors": true,
+        "children": [ {"title": "Track Section",
+            "nameCodes": ["AA100"],
+            "ignoreFromErrors": true,
+         "children": [ {"title": "Left Rail",
+            "nameCodes": ["AA110"],
+            },
+           {"title": "Right Rail",
+            "nameCodes": ["AA120"],
+            }
+          ]}
+          }}
+          ]
   ]
 }
+  
