@@ -661,11 +661,13 @@ function hasAssetError(asset) {
 }
 
 function selectAsset(assetNumber) {
-  if (!assetNumber || assetNumber === selectedAssetNumber) {
+  if (!assetNumber) {
     return;
   }
-  selectedAssetNumber = assetNumber;
-  renderAssetList();
+  if (assetNumber !== selectedAssetNumber) {
+    selectedAssetNumber = assetNumber;
+    renderAssetList();
+  }
   renderTree();
 }
 
@@ -725,6 +727,9 @@ function updateReferenceTree(tree) {
   referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   referenceChildMap = buildReferenceChildMap(tree.root);
   renderAssetList();
+  if (selectedAssetNumber) {
+    renderTree();
+  }
 }
 
 function renderReferenceNode(node) {
