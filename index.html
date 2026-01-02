@@ -29,6 +29,10 @@
               placeholder="Filter by asset number or description"
               aria-label="Filter assets"
             />
+            <select id="groupFilter" aria-label="Filter by relationship group">
+              <option value="all">All assets</option>
+              <option value="sc-group">S&amp;C group assets</option>
+            </select>
             <select id="itemNameFilter" aria-label="Filter by item name code and description">
               <option value="all">All Item Name Code &amp; Desc</option>
             </select>
@@ -47,8 +51,30 @@
             <span class="legend-item"><span class="legend-box legend-obsolete"></span>Obsolete record</span>
           </div>
         </div>
-        <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
-        <div id="treeContainer" class="tree-container"></div>
+        <div class="tree-layout">
+          <div class="tree-panel">
+            <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
+            <div id="treeContainer" class="tree-container"></div>
+          </div>
+          <aside class="reference-panel" aria-label="Relationship reference trees">
+            <div class="reference-header">
+              <div>
+                <h3>Reference Tree</h3>
+                <p>Select relationship tree</p>
+              </div>
+              <select id="referenceTreeSelect" aria-label="Select relationship tree">
+                <option>Switches and Crossings</option>
+              </select>
+            </div>
+            <p class="reference-note">
+              Nodes are defined using <strong>Asset Class Code &amp; Desc</strong> values.
+            </p>
+            <div id="referenceTreeStatus" class="reference-status">
+              Loading reference tree…
+            </div>
+            <ul id="referenceTree" class="reference-tree"></ul>
+          </aside>
+        </div>
       </section>
     </main>
 
