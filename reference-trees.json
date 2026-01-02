@@ -1,0 +1,36 @@
+{
+  "trees": [
+    {
+      "id": "switches-crossings",
+      "label": "Switches and Crossings",
+      "root": {
+        "title": "S&C Unit",
+        "nameCodes": ["AU100", "AU120", "AU140", "AU160", "AU190"],
+        "children": [
+          {
+            "title": "Switch Panel",
+            "nameCodes": ["AP100"],
+            "children": [
+              {
+                "title": "Left Hand Half Set",
+                "nameCodes": ["AS100"]
+              },
+              {
+                "title": "Right Hand Half Set",
+                "nameCodes": ["AS110"]
+              }
+            ]
+          },
+          {
+            "title": "Crossing (S&C)",
+            "nameCodes": ["AX100"]
+          },
+          {
+            "title": "Point Heater",
+            "nameCodes": ["CD100"]
+          }
+        ]
+      }
+    }
+  ]
+}
