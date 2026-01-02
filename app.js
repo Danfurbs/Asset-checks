@@ -20,6 +20,8 @@ const COLUMN_ALIASES = {
 
 function normalizeHeader(value) {
   return String(value || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
