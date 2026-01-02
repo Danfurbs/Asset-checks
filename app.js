@@ -24,6 +24,7 @@ let referenceTrees = [];
 let referenceNameCodes = [];
 let referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set();
+let referenceChildMap = new Map();
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -289,14 +290,22 @@ function renderAssetList() {
         button.classList.add("selected");
       }
       const description = asset.assetDesc1 || asset.assetDesc2 || "";
-      const mismatch = isReferenceMismatch(asset);
-      if (mismatch) {
-        const alert = document.createElement("span");
-        alert.className = "asset-alert";
-        alert.textContent = "!";
-        alert.title = "Does not follow the reference hierarchy";
-        button.appendChild(alert);
-      }
+  const mismatch = isReferenceMismatch(asset);
+  if (mismatch) {
+    const alert = document.createElement("span");
+    alert.className = "asset-alert";
+    alert.textContent = "!";
+    alert.title = "Does not follow the reference hierarchy";
+    button.appendChild(alert);
+  }
+  const missingChildren = getMissingReferenceChildren(asset);
+  if (missingChildren.length) {
+    const warning = document.createElement("span");
+    warning.className = "asset-warning";
+    warning.textContent = "!";
+    warning.title = buildMissingChildrenTitle(missingChildren);
+    button.appendChild(warning);
+  }
       const label = document.createElement("span");
       label.className = "asset-label";
       label.textContent = description
@@ -403,6 +412,16 @@ function createNodeCard(node) {
     alert.textContent = "!";
     alert.title = "Does not follow the reference hierarchy";
     card.appendChild(alert);
+  }
+  if (assetRecord) {
+    const missingChildren = getMissingReferenceChildren(assetRecord);
+    if (missingChildren.length) {
+      const warning = document.createElement("span");
+      warning.className = "node-warning";
+      warning.textContent = "!";
+      warning.title = buildMissingChildrenTitle(missingChildren);
+      card.appendChild(warning);
+    }
   }
 
   const desc = node.assetDesc1 || node.assetDesc2 || "";
@@ -603,6 +622,7 @@ function updateReferenceTree(tree) {
   referenceNameCodes = collectReferenceNameCodes(tree.root);
   referenceParentMap = buildReferenceParentMap(tree.root);
   referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
+  referenceChildMap = buildReferenceChildMap(tree.root);
   renderAssetList();
 }
 
@@ -678,6 +698,77 @@ function collectIgnoredNameCodes(node) {
     });
   }
   return new Set(codes);
+}
+
+function buildReferenceChildMap(node) {
+  const map = new Map();
+  if (!node) {
+    return map;
+  }
+
+  const currentCodes = (node.nameCodes || []).map((code) => code.toUpperCase());
+  const directChildCodes = [];
+
+  if (node.children?.length) {
+    node.children.forEach((child) => {
+      if (child.nameCodes?.length) {
+        directChildCodes.push(...child.nameCodes.map((code) => code.toUpperCase()));
+      }
+      const childMap = buildReferenceChildMap(child);
+      childMap.forEach((value, key) => {
+        if (!map.has(key)) {
+          map.set(key, new Set());
+        }
+        value.forEach((item) => map.get(key).add(item));
+      });
+    });
+  }
+
+  if (currentCodes.length && directChildCodes.length) {
+    currentCodes.forEach((code) => {
+      if (!map.has(code)) {
+        map.set(code, new Set());
+      }
+      directChildCodes.forEach((item) => map.get(code).add(item));
+    });
+  }
+
+  return map;
+}
+
+function getMissingReferenceChildren(asset) {
+  const assetCode = extractNameCode(asset.itemNameCodeDesc);
+  if (!assetCode || !referenceChildMap.has(assetCode)) {
+    return [];
+  }
+  if (referenceIgnoredCodes.has(assetCode)) {
+    return [];
+  }
+
+  const expectedChildren = referenceChildMap.get(assetCode) || new Set();
+  if (expectedChildren.size === 0) {
+    return [];
+  }
+
+  const existingChildren = new Set();
+  const childNumbers = childrenMap.get(asset.assetNumber) || [];
+  childNumbers.forEach((childNumber) => {
+    const childAsset = assetMap.get(childNumber);
+    if (!childAsset) {
+      return;
+    }
+    const childCode = extractNameCode(childAsset.itemNameCodeDesc);
+    if (childCode) {
+      existingChildren.add(childCode);
+    }
+  });
+
+  return Array.from(expectedChildren).filter((code) => !existingChildren.has(code));
+}
+
+function buildMissingChildrenTitle(missingCodes) {
+  const list = missingCodes.join(", ");
+  return `Expecting Item Class ${list}. Asset may not be in download.`;
 }
 
 function buildReferenceParentMap(node, parentCodes = []) {
