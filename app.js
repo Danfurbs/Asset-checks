@@ -17,11 +17,15 @@ const treeWarningsList = document.getElementById("treeWarningsList");
 const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
+const exportButton = document.getElementById("exportButton");
 
 let assets = [];
 let assetMap = new Map();
 let childrenMap = new Map();
 let selectedAssetNumber = null;
+let originalParentMap = new Map();
+let changedAssets = new Set();
+let initialMismatchAssets = new Set();
 
 let referenceTrees = [];
 let referenceNameCodes = [];
@@ -43,6 +47,88 @@ const COLUMN_ALIASES = {
     "Item Name Code Desc",
   ],
 };
+
+const EXPORT_HEADERS = [
+  "EquipNo",
+  "EquipGrpId",
+  "EquipClass",
+  "PlantNo",
+  "PlantCode0",
+  "PlantCode1",
+  "PlantCode2",
+  "PlantCode3",
+  "PlantCode4",
+  "PlantCode5",
+  "ParentEquipRef",
+  "ItemNameCode",
+  "EquipNoD1",
+  "EquipNoD2",
+  "EquipStatus",
+  "Active Flag",
+  "Equipment Type (0)",
+  "Region (1)",
+  "Maintenance Responsibility (2)",
+  "Sub Discipline (3)",
+  "Disclipline (4)",
+  "Geographical Delivery Unit (5)",
+  "Route (6)",
+  "Position (7)",
+  "Special Equipment Status (8)",
+  "Signal Sighting Cable Ride (9)",
+  "Maintaining Delivery Unit (10)",
+  "Asset Out Of Use Status (11)",
+  "Maintenance Engineer (12)",
+  "Engineering Support Group (13)",
+  "External Ownership (14)",
+  "Section Manager (15)",
+  "ConAstSegSt",
+  "ConAstSegEn",
+  "SegmentUom",
+  "CostSegLgth",
+  "InputBy",
+  "OperatorId",
+  "DstrctCode",
+  "CostingFlag",
+  "EquipLocation",
+  "Colloquial_1",
+  "Colloquial_2",
+  "Colloquial_3",
+  "Colloquial_4",
+  "Colloquial_5",
+  "Colloquial_6",
+  "RARUNID",
+  "RARDECID",
+  "RAILID",
+  "WO_Grouping_Eqp_ID",
+  "Attrib_Name1",
+  "Attrib_Value1",
+  "Attrib_Name2",
+  "Attrib_Value2",
+  "Attrib_Name3",
+  "Attrib_Value3",
+  "Attrib_Name4",
+  "Attrib_Value4",
+  "Attrib_Name5",
+  "Attrib_Value5",
+  "Attrib_Name6",
+  "Attrib_Value6",
+  "Attrib_Name7",
+  "Attrib_Value7",
+  "Attrib_Name8",
+  "Attrib_Value8",
+  "ADM_BatchRef",
+  "ADM_BatchRef_Seq",
+  "ASSETLAT",
+  "ASSETLONG",
+  "ASSETELAT",
+  "ASSETELONG",
+  "Date of Installation",
+  "Date of Retirement",
+  "Year of Installation",
+  "Year of Retirement",
+  "Result",
+  "Date / Time Stamp",
+];
 
 function normalizeHeader(value) {
   return String(value || "")
@@ -87,6 +173,8 @@ function findHeaderRow(rows, maxScan = 20) {
 function buildMaps(rows, headers) {
   assetMap = new Map();
   childrenMap = new Map();
+  originalParentMap = new Map();
+  changedAssets = new Set();
 
   const assetIdx = findColumn(headers, COLUMN_ALIASES.assetNumber);
   const parentIdx = findColumn(headers, COLUMN_ALIASES.parentAssetNumber);
@@ -134,6 +222,7 @@ function buildMaps(rows, headers) {
 
   assets.forEach((asset) => {
     assetMap.set(asset.assetNumber, asset);
+    originalParentMap.set(asset.assetNumber, asset.parentAssetNumber || null);
   });
 
   assets.forEach((asset) => {
@@ -293,22 +382,29 @@ function renderAssetList() {
         button.classList.add("selected");
       }
       const description = asset.assetDesc1 || asset.assetDesc2 || "";
-  const mismatch = isReferenceMismatch(asset);
-  if (mismatch) {
-    const alert = document.createElement("span");
-    alert.className = "asset-alert";
-    alert.textContent = "!";
-    alert.title = "Does not follow the reference hierarchy";
-    button.appendChild(alert);
-  }
-  const missingChildren = getMissingReferenceChildren(asset);
-  if (missingChildren.length) {
-    const warning = document.createElement("span");
-    warning.className = "asset-warning";
-    warning.textContent = "!";
-    warning.title = buildMissingChildrenTitle(missingChildren);
-    button.appendChild(warning);
-  }
+      const mismatch = isReferenceMismatch(asset);
+      if (mismatch) {
+        const alert = document.createElement("span");
+        alert.className = "asset-alert";
+        alert.textContent = "!";
+        alert.title = "Does not follow the reference hierarchy";
+        button.appendChild(alert);
+      }
+      const missingChildren = getMissingReferenceChildren(asset);
+      if (missingChildren.length) {
+        const warning = document.createElement("span");
+        warning.className = "asset-warning";
+        warning.textContent = "!";
+        warning.title = buildMissingChildrenTitle(missingChildren);
+        button.appendChild(warning);
+      }
+      if (shouldShowTick(asset)) {
+        const tick = document.createElement("span");
+        tick.className = "asset-tick";
+        tick.textContent = "✓";
+        tick.title = "Correctly linked to reference parent";
+        button.appendChild(tick);
+      }
       const label = document.createElement("span");
       label.className = "asset-label";
       label.textContent = description
@@ -318,6 +414,15 @@ function renderAssetList() {
       button.addEventListener("click", () => {
         selectAsset(asset.assetNumber);
       });
+      button.addEventListener("dragstart", (event) => {
+        event.dataTransfer?.setData("text/plain", asset.assetNumber);
+        event.dataTransfer?.setData("application/x-asset-number", asset.assetNumber);
+        button.classList.add("dragging");
+      });
+      button.addEventListener("dragend", () => {
+        button.classList.remove("dragging");
+      });
+      button.draggable = true;
       li.appendChild(button);
       assetList.appendChild(li);
     });
@@ -425,6 +530,13 @@ function createNodeCard(node) {
       warning.title = buildMissingChildrenTitle(missingChildren);
       card.appendChild(warning);
     }
+    if (shouldShowTick(assetRecord)) {
+      const tick = document.createElement("span");
+      tick.className = "node-tick";
+      tick.textContent = "✓";
+      tick.title = "Correctly linked to reference parent";
+      card.appendChild(tick);
+    }
   }
 
   const desc = node.assetDesc1 || node.assetDesc2 || "";
@@ -461,6 +573,15 @@ function createNodeCard(node) {
   });
   card.tabIndex = 0;
   card.setAttribute("role", "button");
+  card.draggable = true;
+  card.addEventListener("dragstart", (event) => {
+    event.dataTransfer?.setData("text/plain", node.assetNumber);
+    event.dataTransfer?.setData("application/x-asset-number", node.assetNumber);
+    card.classList.add("dragging");
+  });
+  card.addEventListener("dragend", () => {
+    card.classList.remove("dragging");
+  });
   return card;
 }
 
@@ -482,6 +603,27 @@ function renderTreeNode(node) {
 
     const childrenWrapper = document.createElement("div");
     childrenWrapper.className = "tree-children";
+    if (!node.missing && node.assetNumber) {
+      childrenWrapper.dataset.parentNumber = node.assetNumber;
+      childrenWrapper.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        childrenWrapper.classList.add("drag-over");
+      });
+      childrenWrapper.addEventListener("dragleave", () => {
+        childrenWrapper.classList.remove("drag-over");
+      });
+      childrenWrapper.addEventListener("drop", (event) => {
+        event.preventDefault();
+        childrenWrapper.classList.remove("drag-over");
+        const assetNumber =
+          event.dataTransfer?.getData("application/x-asset-number") ||
+          event.dataTransfer?.getData("text/plain");
+        if (!assetNumber) {
+          return;
+        }
+        updateAssetParent(assetNumber, node.assetNumber);
+      });
+    }
     node.children.forEach((child) => {
       childrenWrapper.appendChild(renderTreeNode(child));
     });
@@ -630,7 +772,7 @@ function extractNameCode(value) {
   return match ? match[0].toUpperCase() : "";
 }
 
-function isReferenceMismatch(asset) {
+function isReferenceMismatch(asset, parentOverride = null) {
   const assetCode = extractNameCode(asset.itemNameCodeDesc);
   if (!assetCode || !referenceNameCodes.includes(assetCode)) {
     return false;
@@ -639,11 +781,13 @@ function isReferenceMismatch(asset) {
     return false;
   }
 
-  if (!asset.parentAssetNumber) {
+  const parentAssetNumber =
+    parentOverride !== null ? parentOverride : asset.parentAssetNumber;
+  if (!parentAssetNumber) {
     return false;
   }
 
-  const parentAsset = assetMap.get(asset.parentAssetNumber);
+  const parentAsset = assetMap.get(parentAssetNumber);
   if (!parentAsset) {
     return true;
   }
@@ -658,6 +802,66 @@ function isReferenceMismatch(asset) {
 
 function hasAssetError(asset) {
   return isReferenceMismatch(asset);
+}
+
+function shouldShowTick(asset) {
+  return initialMismatchAssets.has(asset.assetNumber) && !isReferenceMismatch(asset);
+}
+
+function isDescendant(assetNumber, potentialParent) {
+  if (!assetNumber || !potentialParent) {
+    return false;
+  }
+  const children = childrenMap.get(assetNumber) || [];
+  if (children.includes(potentialParent)) {
+    return true;
+  }
+  return children.some((child) => isDescendant(child, potentialParent));
+}
+
+function updateAssetParent(assetNumber, newParentNumber) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset || !newParentNumber) {
+    return;
+  }
+  if (assetNumber === newParentNumber) {
+    return;
+  }
+  if (isDescendant(assetNumber, newParentNumber)) {
+    return;
+  }
+
+  const oldParent = asset.parentAssetNumber || null;
+  if (oldParent === newParentNumber) {
+    return;
+  }
+
+  if (oldParent && childrenMap.has(oldParent)) {
+    const siblings = childrenMap.get(oldParent).filter((child) => child !== assetNumber);
+    if (siblings.length) {
+      childrenMap.set(oldParent, siblings);
+    } else {
+      childrenMap.delete(oldParent);
+    }
+  }
+
+  asset.parentAssetNumber = newParentNumber;
+  if (!childrenMap.has(newParentNumber)) {
+    childrenMap.set(newParentNumber, []);
+  }
+  if (!childrenMap.get(newParentNumber).includes(assetNumber)) {
+    childrenMap.get(newParentNumber).push(assetNumber);
+  }
+
+  if (originalParentMap.get(assetNumber) === newParentNumber) {
+    changedAssets.delete(assetNumber);
+  } else {
+    changedAssets.add(assetNumber);
+  }
+
+  updateExportButton();
+  renderAssetList();
+  renderTree();
 }
 
 function selectAsset(assetNumber) {
@@ -726,6 +930,7 @@ function updateReferenceTree(tree) {
   referenceParentMap = buildReferenceParentMap(tree.root);
   referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   referenceChildMap = buildReferenceChildMap(tree.root);
+  captureInitialMismatches();
   renderAssetList();
   if (selectedAssetNumber) {
     renderTree();
@@ -917,6 +1122,16 @@ function buildReferenceParentMap(node, parentCodes = []) {
   return map;
 }
 
+function captureInitialMismatches() {
+  initialMismatchAssets = new Set();
+  assets.forEach((asset) => {
+    const originalParent = originalParentMap.get(asset.assetNumber) ?? null;
+    if (isReferenceMismatch(asset, originalParent)) {
+      initialMismatchAssets.add(asset.assetNumber);
+    }
+  });
+}
+
 function handleFile(file) {
   const reader = new FileReader();
   reader.onload = (event) => {
@@ -955,11 +1170,49 @@ function handleFile(file) {
     }
 
     populateFilters();
+    captureInitialMismatches();
+    updateExportButton();
     selectedAssetNumber = assets[0]?.assetNumber || null;
     renderAssetList();
     renderTree();
   };
   reader.readAsArrayBuffer(file);
+}
+
+function updateExportButton() {
+  if (!exportButton) {
+    return;
+  }
+  exportButton.disabled = changedAssets.size === 0;
+}
+
+function buildExportRows() {
+  const rows = [EXPORT_HEADERS];
+  Array.from(changedAssets)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((assetNumber) => {
+      const asset = assetMap.get(assetNumber);
+      if (!asset) {
+        return;
+      }
+      const row = Array(EXPORT_HEADERS.length).fill("");
+      row[0] = asset.assetNumber;
+      row[EXPORT_HEADERS.indexOf("ParentEquipRef")] =
+        asset.parentAssetNumber || "";
+      rows.push(row);
+    });
+  return rows;
+}
+
+function exportChanges() {
+  if (changedAssets.size === 0) {
+    return;
+  }
+  const rows = buildExportRows();
+  const worksheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "ParentChanges");
+  XLSX.writeFile(workbook, "asset-parent-changes.xlsx");
 }
 
 fileInput.addEventListener("change", (event) => {
@@ -1001,6 +1254,12 @@ hideObsoleteToggle.addEventListener("change", () => {
 errorOnlyToggle.addEventListener("change", () => {
   renderAssetList();
 });
+
+if (exportButton) {
+  exportButton.addEventListener("click", () => {
+    exportChanges();
+  });
+}
 
 referenceTreeSelect.addEventListener("change", (event) => {
   const selectedTree = referenceTrees.find((tree) => tree.id === event.target.value);

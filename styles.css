@@ -23,6 +23,36 @@ body {
   color: #f9fafb;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.export-button {
+  background: #10b981;
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1.4rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.export-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.export-button:not(:disabled):hover,
+.export-button:not(:disabled):focus {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.25);
+}
+
 .app-header h1 {
   margin: 0;
   font-size: 1.8rem;
@@ -193,6 +223,10 @@ body {
   gap: 0.5rem;
 }
 
+.asset-button.dragging {
+  opacity: 0.5;
+}
+
 .asset-button:hover,
 .asset-button:focus {
   background: #e0e7ff;
@@ -227,6 +261,19 @@ body {
   border-radius: 50%;
   background: #f59e0b;
   color: #1f2937;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.asset-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #fff;
   font-weight: 700;
   font-size: 0.8rem;
 }
@@ -540,6 +587,10 @@ body {
   position: relative;
 }
 
+.node-card.dragging {
+  opacity: 0.55;
+}
+
 .node-card a {
   color: inherit;
   text-decoration: none;
@@ -608,6 +659,23 @@ body {
   box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3);
 }
 
+.node-tick {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #10b981;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 10px rgba(16, 185, 129, 0.3);
+}
+
 .tree-branch {
   position: relative;
   display: flex;
@@ -645,6 +713,11 @@ body {
   border: 1px dashed #cbd5f5;
   border-radius: 18px;
   padding: 2.5rem 2rem 1.75rem;
+}
+
+.tree-children.drag-over {
+  border-color: #10b981;
+  background: #ecfdf5;
 }
 
 .tree-children > .tree-node + .tree-node {
