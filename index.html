@@ -47,8 +47,117 @@
             <span class="legend-item"><span class="legend-box legend-obsolete"></span>Obsolete record</span>
           </div>
         </div>
-        <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
-        <div id="treeContainer" class="tree-container"></div>
+        <div class="tree-layout">
+          <div class="tree-panel">
+            <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
+            <div id="treeContainer" class="tree-container"></div>
+          </div>
+          <aside class="reference-panel" aria-label="Relationship reference trees">
+            <div class="reference-header">
+              <div>
+                <h3>Reference Tree</h3>
+                <p>Select relationship tree</p>
+              </div>
+              <select id="referenceTreeSelect" aria-label="Select relationship tree">
+                <option>Switches and Crossings</option>
+              </select>
+            </div>
+            <p class="reference-note">
+              Nodes use a mix of <strong>Asset Class Code &amp; Desc</strong> and
+              <strong>EGI Code &amp; Desc</strong> values.
+            </p>
+            <ul class="reference-tree">
+              <li>
+                <div class="ref-node">
+                  <span class="ref-title">IMDM Virtual Asset</span>
+                  <span class="ref-code">10100RTK0003</span>
+                  <span class="ref-pill ref-pill-eg">EGI Code</span>
+                </div>
+                <ul>
+                  <li>
+                    <div class="ref-node">
+                      <span class="ref-title">IMDM S&amp;C</span>
+                      <span class="ref-code">10100RTK0008</span>
+                      <span class="ref-pill ref-pill-eg">EGI Code</span>
+                    </div>
+                    <ul>
+                      <li>
+                        <div class="ref-node">
+                          <span class="ref-title">S&amp;C Area</span>
+                          <span class="ref-code">10100RTK0009</span>
+                          <span class="ref-pill ref-pill-eg">EGI Code</span>
+                        </div>
+                        <ul>
+                          <li>
+                            <div class="ref-node">
+                              <span class="ref-title">S&amp;C Unit</span>
+                              <span class="ref-code">AU Class</span>
+                              <span class="ref-pill ref-pill-class">Asset Class</span>
+                            </div>
+                            <ul>
+                              <li>
+                                <div class="ref-node">
+                                  <span class="ref-title">Switch Panel</span>
+                                  <span class="ref-code">AP Class</span>
+                                  <span class="ref-pill ref-pill-class">Asset Class</span>
+                                </div>
+                                <ul>
+                                  <li>
+                                    <div class="ref-node">
+                                      <span class="ref-title">Left Hand Half Set</span>
+                                      <span class="ref-code">AS100RTK0001</span>
+                                      <span class="ref-pill ref-pill-eg">EGI Code</span>
+                                    </div>
+                                  </li>
+                                  <li>
+                                    <div class="ref-node">
+                                      <span class="ref-title">Right Hand Half Set</span>
+                                      <span class="ref-code">AS100RTK0001</span>
+                                      <span class="ref-pill ref-pill-eg">EGI Code</span>
+                                    </div>
+                                  </li>
+                                  <li>
+                                    <div class="ref-node">
+                                      <span class="ref-title">Stretcher Bars (0-9)</span>
+                                      <span class="ref-code">ST Class</span>
+                                      <span class="ref-pill ref-pill-class">Asset Class</span>
+                                    </div>
+                                  </li>
+                                </ul>
+                              </li>
+                              <li>
+                                <div class="ref-node">
+                                  <span class="ref-title">Crossing (S&amp;C)</span>
+                                  <span class="ref-code">AX Class</span>
+                                  <span class="ref-pill ref-pill-class">Asset Class</span>
+                                </div>
+                              </li>
+                              <li>
+                                <div class="ref-node">
+                                  <span class="ref-title">Point Heater</span>
+                                  <span class="ref-code">CD Class</span>
+                                  <span class="ref-pill ref-pill-class">Asset Class</span>
+                                </div>
+                              </li>
+                            </ul>
+                          </li>
+                        </ul>
+                      </li>
+                      <li>
+                        <div class="ref-node">
+                          <span class="ref-title">S&amp;C Junction Area</span>
+                          <span class="ref-code">ZZ000RTK0001</span>
+                          <span class="ref-pill ref-pill-eg">EGI Code</span>
+                          <span class="ref-join">Joins to S&amp;C Unit</span>
+                        </div>
+                      </li>
+                    </ul>
+                  </li>
+                </ul>
+              </li>
+            </ul>
+          </aside>
+        </div>
       </section>
     </main>
 
