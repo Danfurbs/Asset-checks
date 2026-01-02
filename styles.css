@@ -462,14 +462,42 @@ body {
   box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);
 }
 
+.tree-branch {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-top: 1.25rem;
+}
+
+.tree-branch-label {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #ffffff;
+  border: 1px solid #cbd5f5;
+  color: #4338ca;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
 .tree-children {
   display: inline-flex;
   flex-wrap: wrap;
   justify-content: center;
   align-self: center;
   gap: 2.5rem 3rem;
-  padding-top: 2.5rem;
   position: relative;
+  background: #f8fafc;
+  border: 1px dashed #cbd5f5;
+  border-radius: 18px;
+  padding: 2.5rem 2rem 1.75rem;
 }
 
 .tree-children::before {
