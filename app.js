@@ -6,24 +6,17 @@ const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
 const treeStatus = document.getElementById("treeStatus");
 const treeContainer = document.getElementById("treeContainer");
+const referenceTreeSelect = document.getElementById("referenceTreeSelect");
+const referenceTreeStatus = document.getElementById("referenceTreeStatus");
+const referenceTree = document.getElementById("referenceTree");
 
 let assets = [];
 let assetMap = new Map();
 let childrenMap = new Map();
 let selectedAssetNumber = null;
 
-const SC_REFERENCE_CODES = [
-  "10100RTK0003",
-  "10100RTK0008",
-  "10100RTK0009",
-  "ZZ000RTK0001",
-  "AU Class",
-  "AP Class",
-  "AX Class",
-  "CD Class",
-  "AS100RTK0001",
-  "ST Class",
-];
+let referenceTrees = [];
+let referenceClassCodes = [];
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -314,6 +307,9 @@ function createNodeCard(node) {
   assetLink.target = "_blank";
   assetLink.rel = "noopener noreferrer";
   card.appendChild(assetLink);
+  assetLink.addEventListener("click", (event) => {
+    event.stopPropagation();
+  });
   if (desc) {
     const small = document.createElement("small");
     small.textContent = desc;
@@ -382,9 +378,7 @@ function matchesReferenceGroup(asset, selectedGroup) {
 
   if (selectedGroup === "sc-group") {
     const value = asset.itemNameCodeDesc?.toLowerCase() || "";
-    return SC_REFERENCE_CODES.some((code) =>
-      value.includes(code.toLowerCase())
-    );
+    return referenceClassCodes.some((code) => value.includes(code.toLowerCase()));
   }
 
   return true;
@@ -397,6 +391,107 @@ function selectAsset(assetNumber) {
   selectedAssetNumber = assetNumber;
   renderAssetList();
   renderTree();
+}
+
+function loadReferenceTrees() {
+  if (!referenceTreeSelect || !referenceTreeStatus || !referenceTree) {
+    return;
+  }
+
+  fetch("reference-trees.json")
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error("Failed to load reference trees.");
+      }
+      return response.json();
+    })
+    .then((data) => {
+      referenceTrees = Array.isArray(data?.trees) ? data.trees : [];
+      referenceTreeSelect.innerHTML = "";
+      referenceTrees.forEach((tree) => {
+        const option = document.createElement("option");
+        option.value = tree.id;
+        option.textContent = tree.label;
+        referenceTreeSelect.appendChild(option);
+      });
+
+      if (referenceTrees.length === 0) {
+        referenceTreeStatus.textContent = "No reference trees available.";
+        return;
+      }
+
+      referenceTreeSelect.value = referenceTrees[0].id;
+      updateReferenceTree(referenceTrees[0]);
+    })
+    .catch(() => {
+      referenceTreeStatus.textContent =
+        "Unable to load the reference tree definition.";
+    });
+}
+
+function updateReferenceTree(tree) {
+  if (!tree?.root) {
+    referenceTreeStatus.textContent = "Reference tree data is missing.";
+    referenceTree.innerHTML = "";
+    return;
+  }
+
+  referenceTreeStatus.textContent = "";
+  referenceTree.innerHTML = "";
+  referenceTree.appendChild(renderReferenceNode(tree.root));
+  referenceClassCodes = collectReferenceClasses(tree.root);
+  renderAssetList();
+}
+
+function renderReferenceNode(node) {
+  const item = document.createElement("li");
+  const card = document.createElement("div");
+  card.className = "ref-node";
+
+  const title = document.createElement("span");
+  title.className = "ref-title";
+  title.textContent = node.title;
+  card.appendChild(title);
+
+  if (node.classCode) {
+    const code = document.createElement("span");
+    code.className = "ref-code";
+    code.textContent = node.classCode;
+    card.appendChild(code);
+
+    const pill = document.createElement("span");
+    pill.className = "ref-pill ref-pill-class";
+    pill.textContent = "Asset Class";
+    card.appendChild(pill);
+  }
+
+  item.appendChild(card);
+
+  if (node.children?.length) {
+    const list = document.createElement("ul");
+    node.children.forEach((child) => {
+      list.appendChild(renderReferenceNode(child));
+    });
+    item.appendChild(list);
+  }
+
+  return item;
+}
+
+function collectReferenceClasses(node) {
+  const codes = [];
+  if (!node) {
+    return codes;
+  }
+  if (node.classCode) {
+    codes.push(node.classCode);
+  }
+  if (node.children?.length) {
+    node.children.forEach((child) => {
+      codes.push(...collectReferenceClasses(child));
+    });
+  }
+  return Array.from(new Set(codes));
 }
 
 function handleFile(file) {
@@ -463,3 +558,12 @@ groupFilter.addEventListener("change", () => {
 itemNameFilter.addEventListener("change", () => {
   renderAssetList();
 });
+
+referenceTreeSelect.addEventListener("change", (event) => {
+  const selectedTree = referenceTrees.find((tree) => tree.id === event.target.value);
+  if (selectedTree) {
+    updateReferenceTree(selectedTree);
+  }
+});
+
+loadReferenceTrees();

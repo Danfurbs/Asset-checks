@@ -304,6 +304,15 @@ body {
   grid-column: 1 / -1;
 }
 
+.reference-status {
+  background: #eef2ff;
+  color: #4338ca;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
 .tree-node {
   display: flex;
   flex-direction: column;

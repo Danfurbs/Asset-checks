@@ -67,91 +67,12 @@
               </select>
             </div>
             <p class="reference-note">
-              Nodes use a mix of <strong>Asset Class Code &amp; Desc</strong> and
-              <strong>EGI Code &amp; Desc</strong> values.
+              Nodes are defined using <strong>Asset Class Code &amp; Desc</strong> values.
             </p>
-            <ul class="reference-tree">
-              <li>
-                <div class="ref-node">
-                  <span class="ref-title">IMDM Virtual Asset</span>
-                  <span class="ref-code">10100RTK0003</span>
-                  <span class="ref-pill ref-pill-eg">EGI Code</span>
-                </div>
-                <ul>
-                  <li>
-                    <div class="ref-node">
-                      <span class="ref-title">IMDM S&amp;C</span>
-                      <span class="ref-code">10100RTK0008</span>
-                      <span class="ref-pill ref-pill-eg">EGI Code</span>
-                    </div>
-                    <ul>
-                      <li>
-                        <div class="ref-node">
-                          <span class="ref-title">S&amp;C Area / S&amp;C Junction Area</span>
-                          <span class="ref-code">10100RTK0009 · ZZ000RTK0001</span>
-                          <span class="ref-pill ref-pill-eg">EGI Code</span>
-                        </div>
-                        <ul>
-                          <li>
-                            <div class="ref-node">
-                              <span class="ref-title">S&amp;C Unit</span>
-                              <span class="ref-code">AU Class</span>
-                              <span class="ref-pill ref-pill-class">Asset Class</span>
-                            </div>
-                            <ul>
-                              <li>
-                                <div class="ref-node">
-                                  <span class="ref-title">Switch Panel</span>
-                                  <span class="ref-code">AP Class</span>
-                                  <span class="ref-pill ref-pill-class">Asset Class</span>
-                                </div>
-                                <ul>
-                                  <li>
-                                    <div class="ref-node">
-                                      <span class="ref-title">Left Hand Half Set</span>
-                                      <span class="ref-code">AS100RTK0001</span>
-                                      <span class="ref-pill ref-pill-eg">EGI Code</span>
-                                    </div>
-                                  </li>
-                                  <li>
-                                    <div class="ref-node">
-                                      <span class="ref-title">Right Hand Half Set</span>
-                                      <span class="ref-code">AS100RTK0001</span>
-                                      <span class="ref-pill ref-pill-eg">EGI Code</span>
-                                    </div>
-                                  </li>
-                                  <li>
-                                    <div class="ref-node">
-                                      <span class="ref-title">Stretcher Bars (0-9)</span>
-                                      <span class="ref-code">ST Class</span>
-                                      <span class="ref-pill ref-pill-class">Asset Class</span>
-                                    </div>
-                                  </li>
-                                </ul>
-                              </li>
-                              <li>
-                                <div class="ref-node">
-                                  <span class="ref-title">Crossing (S&amp;C)</span>
-                                  <span class="ref-code">AX Class</span>
-                                  <span class="ref-pill ref-pill-class">Asset Class</span>
-                                </div>
-                              </li>
-                              <li>
-                                <div class="ref-node">
-                                  <span class="ref-title">Point Heater</span>
-                                  <span class="ref-code">CD Class</span>
-                                  <span class="ref-pill ref-pill-class">Asset Class</span>
-                                </div>
-                              </li>
-                            </ul>
-                          </li>
-                        </ul>
-                      </li>
-                    </ul>
-                  </li>
-                </ul>
-              </li>
-            </ul>
+            <div id="referenceTreeStatus" class="reference-status">
+              Loading reference tree…
+            </div>
+            <ul id="referenceTree" class="reference-tree"></ul>
           </aside>
         </div>
       </section>

@@ -1,0 +1,36 @@
+{
+  "trees": [
+    {
+      "id": "switches-crossings",
+      "label": "Switches and Crossings",
+      "root": {
+        "title": "S&C Unit",
+        "classCode": "AU",
+        "children": [
+          {
+            "title": "Switch Panel",
+            "classCode": "AP",
+            "children": [
+              {
+                "title": "Left Hand Half Set",
+                "classCode": "AS100"
+              },
+              {
+                "title": "Right Hand Half Set",
+                "classCode": "AS110"
+              }
+            ]
+          },
+          {
+            "title": "Crossing (S&C)",
+            "classCode": "AX"
+          },
+          {
+            "title": "Point Heater",
+            "classCode": "CD"
+          }
+        ]
+      }
+    }
+  ]
+}
