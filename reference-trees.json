@@ -1,3 +1,4 @@
+
 {
   "trees": [
     {
@@ -12,51 +13,35 @@
             "title": "Switch Panel",
             "nameCodes": ["AP100"],
             "children": [
-              {
-                "title": "Left Hand Half Set",
-                "nameCodes": ["AS100"]
-              },
-              {
-                "title": "Right Hand Half Set",
-                "nameCodes": ["AS110"]
-              },
-                            {
-                "title": "Stretcher Bars",
-                "nameCodes": ["ST100"]
-              }
+              { "title": "Left Hand Half Set", "nameCodes": ["AS100"] },
+              { "title": "Right Hand Half Set", "nameCodes": ["AS110"] },
+              { "title": "Stretcher Bars", "nameCodes": ["ST100"] }
             ]
           },
-          {
-            "title": "Crossing (S&C)",
-            "nameCodes": ["AX200", "AX210"]
-          },
-          {
-            "title": "Point Heater",
-            "nameCodes": ["CD100"],
-            "ignoreFromErrors": true
-          }
+          { "title": "Crossing (S&C)", "nameCodes": ["AX200", "AX210"] },
+          { "title": "Point Heater", "nameCodes": ["CD100"], "ignoreFromErrors": true }
         ]
       }
-    }
-
-      {"id": "Track IDs",
+    },
+    {
+      "id": "Track IDs",
       "label": "Track ID",
       "root": {
         "title": "ELR",
         "nameCodes": ["15"],
         "ignoreFromErrors": true,
-        "children": [ {"title": "Track Section",
+        "children": [
+          {
+            "title": "Track Section",
             "nameCodes": ["AA100"],
             "ignoreFromErrors": true,
-         "children": [ {"title": "Left Rail",
-            "nameCodes": ["AA110"],
-            },
-           {"title": "Right Rail",
-            "nameCodes": ["AA120"],
-            }
-          ]}
-          }}
-          ]
-  
+            "children": [
+              { "title": "Left Rail", "nameCodes": ["AA110"] },
+              { "title": "Right Rail", "nameCodes": ["AA120"] }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
-  
