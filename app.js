@@ -450,12 +450,21 @@ function renderTreeNode(node) {
   nodeWrapper.appendChild(card);
 
   if (node.children && node.children.length > 0) {
+    const branchWrapper = document.createElement("div");
+    branchWrapper.className = "tree-branch";
+
+    const branchLabel = document.createElement("div");
+    branchLabel.className = "tree-branch-label";
+    branchLabel.textContent = `Children of ${node.assetNumber || "asset"}`;
+    branchWrapper.appendChild(branchLabel);
+
     const childrenWrapper = document.createElement("div");
     childrenWrapper.className = "tree-children";
     node.children.forEach((child) => {
       childrenWrapper.appendChild(renderTreeNode(child));
     });
-    nodeWrapper.appendChild(childrenWrapper);
+    branchWrapper.appendChild(childrenWrapper);
+    nodeWrapper.appendChild(branchWrapper);
   }
 
   return nodeWrapper;
