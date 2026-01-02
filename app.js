@@ -813,33 +813,39 @@ function buildReferenceChildMap(node) {
   }
 
   const currentCodes = (node.nameCodes || []).map((code) => code.toUpperCase());
-  const directChildCodes = [];
+  const directChildGroups = [];
 
   if (node.children?.length) {
     node.children.forEach((child) => {
       if (child.nameCodes?.length) {
-        directChildCodes.push(...child.nameCodes.map((code) => code.toUpperCase()));
+        directChildGroups.push(
+          new Set(child.nameCodes.map((code) => code.toUpperCase()))
+        );
       }
       const childMap = buildReferenceChildMap(child);
-      childMap.forEach((value, key) => {
+      childMap.forEach((groups, key) => {
         if (!map.has(key)) {
-          map.set(key, new Set());
+          map.set(key, []);
         }
-        value.forEach((item) => map.get(key).add(item));
+        map.get(key).push(...groups);
       });
     });
   }
 
-  if (currentCodes.length && directChildCodes.length) {
+  if (currentCodes.length && directChildGroups.length) {
     currentCodes.forEach((code) => {
       if (!map.has(code)) {
-        map.set(code, new Set());
+        map.set(code, []);
       }
-      directChildCodes.forEach((item) => map.get(code).add(item));
+      map.get(code).push(...directChildGroups);
     });
   }
 
   return map;
+}
+
+function formatMissingChildrenGroups(missingGroups) {
+  return missingGroups.map((group) => Array.from(group).join(" or "));
 }
 
 function getMissingReferenceChildren(asset) {
@@ -848,8 +854,8 @@ function getMissingReferenceChildren(asset) {
     return [];
   }
 
-  const expectedChildren = referenceChildMap.get(assetCode) || new Set();
-  if (expectedChildren.size === 0) {
+  const expectedGroups = referenceChildMap.get(assetCode) || [];
+  if (expectedGroups.length === 0) {
     return [];
   }
 
@@ -866,7 +872,11 @@ function getMissingReferenceChildren(asset) {
     }
   });
 
-  return Array.from(expectedChildren).filter((code) => !existingChildren.has(code));
+  const missingGroups = expectedGroups.filter(
+    (group) => !Array.from(group).some((code) => existingChildren.has(code))
+  );
+
+  return formatMissingChildrenGroups(missingGroups);
 }
 
 function buildMissingChildrenTitle(missingCodes) {
