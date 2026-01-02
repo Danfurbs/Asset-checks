@@ -21,6 +21,7 @@ const COLUMN_ALIASES = {
 function normalizeHeader(value) {
   return String(value || "")
     .replace(/\u00a0/g, " ")
+    .replace(/[^a-z0-9]+/gi, " ")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -29,15 +30,22 @@ function normalizeHeader(value) {
 function findColumn(headers, candidates) {
   const normalizedHeaders = headers.map((header) => normalizeHeader(header));
   for (const candidate of candidates) {
-    const idx = normalizedHeaders.indexOf(normalizeHeader(candidate));
+    const normalizedCandidate = normalizeHeader(candidate);
+    const idx = normalizedHeaders.indexOf(normalizedCandidate);
     if (idx !== -1) {
       return idx;
+    }
+    const partialIdx = normalizedHeaders.findIndex((header) =>
+      header.includes(normalizedCandidate)
+    );
+    if (partialIdx !== -1) {
+      return partialIdx;
     }
   }
   return -1;
 }
 
-function findHeaderRow(rows, maxScan = 5) {
+function findHeaderRow(rows, maxScan = 20) {
   const scanLimit = Math.min(rows.length, maxScan);
   for (let i = 0; i < scanLimit; i += 1) {
     const headers = rows[i] || [];
