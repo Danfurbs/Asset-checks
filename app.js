@@ -741,9 +741,6 @@ function getMissingReferenceChildren(asset) {
   if (!assetCode || !referenceChildMap.has(assetCode)) {
     return [];
   }
-  if (referenceIgnoredCodes.has(assetCode)) {
-    return [];
-  }
 
   const expectedChildren = referenceChildMap.get(assetCode) || new Set();
   if (expectedChildren.size === 0) {
