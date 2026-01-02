@@ -591,6 +591,11 @@ body {
   opacity: 0.55;
 }
 
+.node-card.drag-over {
+  border-color: #10b981;
+  box-shadow: 0 10px 20px rgba(16, 185, 129, 0.2);
+}
+
 .node-card a {
   color: inherit;
   text-decoration: none;

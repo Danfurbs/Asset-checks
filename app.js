@@ -502,6 +502,9 @@ function buildFamilyTree(assetNumber) {
 function createNodeCard(node) {
   const card = document.createElement("div");
   card.className = "node-card";
+  if (node.assetNumber) {
+    card.dataset.parentNumber = node.assetNumber;
+  }
 
   if (node.missing) {
     card.classList.add("missing");
@@ -585,6 +588,24 @@ function createNodeCard(node) {
   });
   card.addEventListener("dragend", () => {
     card.classList.remove("dragging");
+  });
+  card.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    card.classList.add("drag-over");
+  });
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drag-over");
+  });
+  card.addEventListener("drop", (event) => {
+    event.preventDefault();
+    card.classList.remove("drag-over");
+    const assetNumber =
+      event.dataTransfer?.getData("application/x-asset-number") ||
+      event.dataTransfer?.getData("text/plain");
+    if (!assetNumber) {
+      return;
+    }
+    updateAssetParent(assetNumber, node.assetNumber);
   });
   return card;
 }
