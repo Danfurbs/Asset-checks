@@ -309,6 +309,15 @@ function createNodeCard(node) {
     card.classList.add("obsolete");
   }
 
+  const assetRecord = assetMap.get(node.assetNumber);
+  if (assetRecord && isReferenceMismatch(assetRecord)) {
+    const alert = document.createElement("span");
+    alert.className = "node-alert";
+    alert.textContent = "!";
+    alert.title = "Does not follow the reference hierarchy";
+    card.appendChild(alert);
+  }
+
   const desc = node.assetDesc1 || node.assetDesc2 || "";
   const itemNameCodeDesc = node.itemNameCodeDesc || "";
   const assetNumber = node.assetNumber || "";
@@ -421,6 +430,9 @@ function isReferenceMismatch(asset) {
   }
 
   const parentCode = extractNameCode(parentAsset.itemNameCodeDesc);
+  if (!parentCode || !referenceNameCodes.includes(parentCode)) {
+    return false;
+  }
   const allowedParents = referenceParentMap.get(assetCode) || new Set();
   return !allowedParents.has(parentCode);
 }

@@ -354,6 +354,7 @@ body {
   background: #ffffff;
   font-weight: 600;
   cursor: pointer;
+  position: relative;
 }
 
 .node-card a {
@@ -388,6 +389,23 @@ body {
 .node-card.obsolete {
   background: #fecaca;
   border-color: #f87171;
+}
+
+.node-alert {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #dc2626;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.8rem;
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.3);
 }
 
 .tree-children {
