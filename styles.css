@@ -367,6 +367,11 @@ body {
   color: #6d28d9;
 }
 
+.ref-pill-ignore {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
 .ref-join {
   font-size: 0.75rem;
   color: #6b7280;

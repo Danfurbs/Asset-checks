@@ -31,7 +31,8 @@
           },
           {
             "title": "Point Heater",
-            "nameCodes": ["CD100"]
+            "nameCodes": ["CD100"],
+            "ignoreFromErrors": true
           }
         ]
       }

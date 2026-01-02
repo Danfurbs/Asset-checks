@@ -23,6 +23,7 @@ let selectedAssetNumber = null;
 let referenceTrees = [];
 let referenceNameCodes = [];
 let referenceParentMap = new Map();
+let referenceIgnoredCodes = new Set();
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -505,6 +506,9 @@ function isReferenceMismatch(asset) {
   if (!assetCode || !referenceNameCodes.includes(assetCode)) {
     return false;
   }
+  if (referenceIgnoredCodes.has(assetCode)) {
+    return false;
+  }
 
   if (!asset.parentAssetNumber) {
     return false;
@@ -519,13 +523,18 @@ function isReferenceMismatch(asset) {
   if (!parentCode || !referenceNameCodes.includes(parentCode)) {
     return false;
   }
+  if (referenceIgnoredCodes.has(parentCode)) {
+    return false;
+  }
   const allowedParents = referenceParentMap.get(assetCode) || new Set();
   return !allowedParents.has(parentCode);
 }
 
 function hasAssetError(asset) {
   const missingParent =
-    asset.parentAssetNumber && !assetMap.has(asset.parentAssetNumber);
+    asset.parentAssetNumber &&
+    !assetMap.has(asset.parentAssetNumber) &&
+    !referenceIgnoredCodes.has(extractNameCode(asset.itemNameCodeDesc));
   return isReferenceMismatch(asset) || missingParent;
 }
 
@@ -586,6 +595,7 @@ function updateReferenceTree(tree) {
   referenceTree.appendChild(renderReferenceNode(tree.root));
   referenceNameCodes = collectReferenceNameCodes(tree.root);
   referenceParentMap = buildReferenceParentMap(tree.root);
+  referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   renderAssetList();
 }
 
@@ -608,6 +618,13 @@ function renderReferenceNode(node) {
     const pill = document.createElement("span");
     pill.className = "ref-pill ref-pill-class";
     pill.textContent = "Item Name Codes";
+    card.appendChild(pill);
+  }
+
+  if (node.ignoreFromErrors) {
+    const pill = document.createElement("span");
+    pill.className = "ref-pill ref-pill-ignore";
+    pill.textContent = "Ignore errors";
     card.appendChild(pill);
   }
 
@@ -638,6 +655,22 @@ function collectReferenceNameCodes(node) {
     });
   }
   return Array.from(new Set(codes));
+}
+
+function collectIgnoredNameCodes(node) {
+  const codes = [];
+  if (!node) {
+    return codes;
+  }
+  if (node.ignoreFromErrors && node.nameCodes?.length) {
+    codes.push(...node.nameCodes.map((code) => code.toUpperCase()));
+  }
+  if (node.children?.length) {
+    node.children.forEach((child) => {
+      codes.push(...collectIgnoredNameCodes(child));
+    });
+  }
+  return new Set(codes);
 }
 
 function buildReferenceParentMap(node, parentCodes = []) {
