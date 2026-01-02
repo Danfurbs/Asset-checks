@@ -2,6 +2,11 @@ const fileInput = document.getElementById("fileInput");
 const filterInput = document.getElementById("filterInput");
 const groupFilter = document.getElementById("groupFilter");
 const itemNameFilter = document.getElementById("itemNameFilter");
+const elrFilter = document.getElementById("elrFilter");
+const assetClassFilter = document.getElementById("assetClassFilter");
+const statusFilter = document.getElementById("statusFilter");
+const hideObsoleteToggle = document.getElementById("hideObsoleteToggle");
+const errorOnlyToggle = document.getElementById("errorOnlyToggle");
 const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
 const treeStatus = document.getElementById("treeStatus");
@@ -18,6 +23,7 @@ let selectedAssetNumber = null;
 let referenceTrees = [];
 let referenceNameCodes = [];
 let referenceParentMap = new Map();
+let referenceIgnoredCodes = new Set();
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -25,6 +31,8 @@ const COLUMN_ALIASES = {
   assetStatus: ["Asset Status", "Status"],
   assetDesc1: ["Asset Desc 1", "Asset Description 1", "Asset Desc"],
   assetDesc2: ["Asset Desc 2", "Asset Description 2"],
+  elr: ["ELR", "ELR Code"],
+  assetClass: ["Asset Class", "Asset Class Code", "Asset Class Description"],
   itemNameCodeDesc: [
     "Item Name Code & Desc",
     "Item Name Code and Desc",
@@ -81,6 +89,8 @@ function buildMaps(rows, headers) {
   const statusIdx = findColumn(headers, COLUMN_ALIASES.assetStatus);
   const desc1Idx = findColumn(headers, COLUMN_ALIASES.assetDesc1);
   const desc2Idx = findColumn(headers, COLUMN_ALIASES.assetDesc2);
+  const elrIdx = findColumn(headers, COLUMN_ALIASES.elr);
+  const assetClassIdx = findColumn(headers, COLUMN_ALIASES.assetClass);
   const itemNameIdx = findColumn(headers, COLUMN_ALIASES.itemNameCodeDesc);
 
   if (assetIdx === -1 || parentIdx === -1) {
@@ -100,6 +110,8 @@ function buildMaps(rows, headers) {
       const assetStatus = statusIdx !== -1 ? row[statusIdx]?.toString().trim() : "";
       const assetDesc1 = desc1Idx !== -1 ? row[desc1Idx]?.toString().trim() : "";
       const assetDesc2 = desc2Idx !== -1 ? row[desc2Idx]?.toString().trim() : "";
+      const elr = elrIdx !== -1 ? row[elrIdx]?.toString().trim() : "";
+      const assetClass = assetClassIdx !== -1 ? row[assetClassIdx]?.toString().trim() : "";
       const itemNameCodeDesc =
         itemNameIdx !== -1 ? row[itemNameIdx]?.toString().trim() : "";
 
@@ -109,6 +121,8 @@ function buildMaps(rows, headers) {
         assetStatus,
         assetDesc1,
         assetDesc2,
+        elr,
+        assetClass,
         itemNameCodeDesc,
       };
     })
@@ -129,30 +143,30 @@ function buildMaps(rows, headers) {
   });
 }
 
-function populateItemNameFilter() {
+function populateSelectFilter(select, values, options) {
   const uniqueValues = new Set();
   let hasEmpty = false;
 
-  assets.forEach((asset) => {
-    const value = asset.itemNameCodeDesc?.trim() || "";
-    if (value) {
-      uniqueValues.add(value);
+  values.forEach((value) => {
+    const trimmed = value?.trim() || "";
+    if (trimmed) {
+      uniqueValues.add(trimmed);
     } else {
       hasEmpty = true;
     }
   });
 
-  itemNameFilter.innerHTML = "";
+  select.innerHTML = "";
   const allOption = document.createElement("option");
   allOption.value = "all";
-  allOption.textContent = "All Item Name Code & Desc";
-  itemNameFilter.appendChild(allOption);
+  allOption.textContent = options.allLabel;
+  select.appendChild(allOption);
 
   if (hasEmpty) {
     const emptyOption = document.createElement("option");
     emptyOption.value = "__empty__";
-    emptyOption.textContent = "No Item Name Code & Desc";
-    itemNameFilter.appendChild(emptyOption);
+    emptyOption.textContent = options.emptyLabel;
+    select.appendChild(emptyOption);
   }
 
   Array.from(uniqueValues)
@@ -161,31 +175,107 @@ function populateItemNameFilter() {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = value;
-      itemNameFilter.appendChild(option);
+      select.appendChild(option);
     });
+}
+
+function populateFilters() {
+  populateSelectFilter(
+    itemNameFilter,
+    assets.map((asset) => asset.itemNameCodeDesc),
+    {
+      allLabel: "All Item Name Code & Desc",
+      emptyLabel: "No Item Name Code & Desc",
+    }
+  );
+  populateSelectFilter(
+    elrFilter,
+    assets.map((asset) => asset.elr),
+    {
+      allLabel: "All ELRs",
+      emptyLabel: "No ELR",
+    }
+  );
+  populateSelectFilter(
+    assetClassFilter,
+    assets.map((asset) => asset.assetClass),
+    {
+      allLabel: "All Asset Classes",
+      emptyLabel: "No Asset Class",
+    }
+  );
+  populateSelectFilter(
+    statusFilter,
+    assets.map((asset) => asset.assetStatus),
+    {
+      allLabel: "All Statuses",
+      emptyLabel: "No Status",
+    }
+  );
 }
 
 function renderAssetList() {
   const query = filterInput.value.trim().toLowerCase();
   const selectedItemName = itemNameFilter.value;
   const selectedGroup = groupFilter.value;
+  const selectedElr = elrFilter.value;
+  const selectedAssetClass = assetClassFilter.value;
+  const selectedStatus = statusFilter.value;
+  const hideObsolete = hideObsoleteToggle.checked;
+  const errorsOnly = errorOnlyToggle.checked;
   assetList.innerHTML = "";
 
   const filtered = assets.filter((asset) => {
-    const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc}`.toLowerCase();
+    const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc} ${asset.elr} ${asset.assetClass} ${asset.assetStatus}`.toLowerCase();
     const matchesQuery = label.includes(query);
     const itemValue = asset.itemNameCodeDesc?.trim() || "";
     const matchesGroup = matchesReferenceGroup(asset, selectedGroup);
+    const isObsolete = asset.assetStatus?.startsWith("OR");
+    const matchesObsolete = hideObsolete ? !isObsolete : true;
+    const matchesErrors = errorsOnly ? hasAssetError(asset) : true;
 
-    if (selectedItemName === "all") {
-      return matchesQuery && matchesGroup;
-    }
+    const elrValue = asset.elr?.trim() || "";
+    const classValue = asset.assetClass?.trim() || "";
+    const statusValue = asset.assetStatus?.trim() || "";
 
-    if (selectedItemName === "__empty__") {
-      return matchesQuery && !itemValue && matchesGroup;
-    }
+    const matchesItemName =
+      selectedItemName === "all"
+        ? true
+        : selectedItemName === "__empty__"
+          ? !itemValue
+          : itemValue === selectedItemName;
 
-    return matchesQuery && itemValue === selectedItemName && matchesGroup;
+    const matchesElr =
+      selectedElr === "all"
+        ? true
+        : selectedElr === "__empty__"
+          ? !elrValue
+          : elrValue === selectedElr;
+
+    const matchesAssetClass =
+      selectedAssetClass === "all"
+        ? true
+        : selectedAssetClass === "__empty__"
+          ? !classValue
+          : classValue === selectedAssetClass;
+
+    const matchesStatus =
+      selectedStatus === "all"
+        ? true
+        : selectedStatus === "__empty__"
+          ? !statusValue
+          : statusValue === selectedStatus;
+
+    return (
+      matchesQuery &&
+      matchesGroup &&
+      matchesItemName &&
+      matchesElr &&
+      matchesAssetClass &&
+      matchesStatus &&
+      matchesObsolete &&
+      matchesErrors
+    );
   });
 
   filtered
@@ -256,39 +346,36 @@ function buildSubtree(assetNumber, visited = new Set()) {
 }
 
 function buildFamilyTree(assetNumber) {
-  let root = buildSubtree(assetNumber);
-  if (!root) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset) {
     return null;
   }
 
-  let current = assetMap.get(assetNumber);
+  let current = asset;
+  let lastKnown = asset;
   while (current?.parentAssetNumber) {
-    const parentNumber = current.parentAssetNumber;
-    const parentAsset = assetMap.get(parentNumber);
-
+    const parentAsset = assetMap.get(current.parentAssetNumber);
     if (!parentAsset) {
-      root = {
-        assetNumber: parentNumber,
-        missing: true,
-        children: [root],
-      };
       break;
     }
-
-    root = {
-      assetNumber: parentAsset.assetNumber,
-      assetStatus: parentAsset.assetStatus,
-      assetDesc1: parentAsset.assetDesc1,
-      assetDesc2: parentAsset.assetDesc2,
-      itemNameCodeDesc: parentAsset.itemNameCodeDesc,
-      missing: false,
-      children: [root],
-    };
-
+    lastKnown = parentAsset;
     current = parentAsset;
   }
 
-  return root;
+  const rootTree = buildSubtree(lastKnown.assetNumber);
+  if (!rootTree) {
+    return null;
+  }
+
+  if (current?.parentAssetNumber && !assetMap.get(current.parentAssetNumber)) {
+    return {
+      assetNumber: current.parentAssetNumber,
+      missing: true,
+      children: [rootTree],
+    };
+  }
+
+  return rootTree;
 }
 
 function createNodeCard(node) {
@@ -419,6 +506,9 @@ function isReferenceMismatch(asset) {
   if (!assetCode || !referenceNameCodes.includes(assetCode)) {
     return false;
   }
+  if (referenceIgnoredCodes.has(assetCode)) {
+    return false;
+  }
 
   if (!asset.parentAssetNumber) {
     return false;
@@ -433,8 +523,19 @@ function isReferenceMismatch(asset) {
   if (!parentCode || !referenceNameCodes.includes(parentCode)) {
     return false;
   }
+  if (referenceIgnoredCodes.has(parentCode)) {
+    return false;
+  }
   const allowedParents = referenceParentMap.get(assetCode) || new Set();
   return !allowedParents.has(parentCode);
+}
+
+function hasAssetError(asset) {
+  const missingParent =
+    asset.parentAssetNumber &&
+    !assetMap.has(asset.parentAssetNumber) &&
+    !referenceIgnoredCodes.has(extractNameCode(asset.itemNameCodeDesc));
+  return isReferenceMismatch(asset) || missingParent;
 }
 
 function selectAsset(assetNumber) {
@@ -494,6 +595,7 @@ function updateReferenceTree(tree) {
   referenceTree.appendChild(renderReferenceNode(tree.root));
   referenceNameCodes = collectReferenceNameCodes(tree.root);
   referenceParentMap = buildReferenceParentMap(tree.root);
+  referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   renderAssetList();
 }
 
@@ -516,6 +618,13 @@ function renderReferenceNode(node) {
     const pill = document.createElement("span");
     pill.className = "ref-pill ref-pill-class";
     pill.textContent = "Item Name Codes";
+    card.appendChild(pill);
+  }
+
+  if (node.ignoreFromErrors) {
+    const pill = document.createElement("span");
+    pill.className = "ref-pill ref-pill-ignore";
+    pill.textContent = "Ignore errors";
     card.appendChild(pill);
   }
 
@@ -546,6 +655,22 @@ function collectReferenceNameCodes(node) {
     });
   }
   return Array.from(new Set(codes));
+}
+
+function collectIgnoredNameCodes(node) {
+  const codes = [];
+  if (!node) {
+    return codes;
+  }
+  if (node.ignoreFromErrors && node.nameCodes?.length) {
+    codes.push(...node.nameCodes.map((code) => code.toUpperCase()));
+  }
+  if (node.children?.length) {
+    node.children.forEach((child) => {
+      codes.push(...collectIgnoredNameCodes(child));
+    });
+  }
+  return new Set(codes);
 }
 
 function buildReferenceParentMap(node, parentCodes = []) {
@@ -618,7 +743,7 @@ function handleFile(file) {
       return;
     }
 
-    populateItemNameFilter();
+    populateFilters();
     selectedAssetNumber = assets[0]?.assetNumber || null;
     renderAssetList();
     renderTree();
@@ -643,6 +768,26 @@ groupFilter.addEventListener("change", () => {
 });
 
 itemNameFilter.addEventListener("change", () => {
+  renderAssetList();
+});
+
+elrFilter.addEventListener("change", () => {
+  renderAssetList();
+});
+
+assetClassFilter.addEventListener("change", () => {
+  renderAssetList();
+});
+
+statusFilter.addEventListener("change", () => {
+  renderAssetList();
+});
+
+hideObsoleteToggle.addEventListener("change", () => {
+  renderAssetList();
+});
+
+errorOnlyToggle.addEventListener("change", () => {
   renderAssetList();
 });
 
