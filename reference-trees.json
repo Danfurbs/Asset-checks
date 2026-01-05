@@ -42,9 +42,8 @@
           }
         ]
       }
-    }
-	
-	    {
+    },
+    {
       "id": "access",
       "label": "Access Facilities & Pathways",
       "root": {
@@ -53,23 +52,26 @@
         "ignoreFromErrors": true,
         "children": [
           {
-            "title": "Restricted Use Gate", "nameCodes": ["BO100"]},
-			"title": "Access Facility", "nameCodes": ["BH100"],
-			"children":[{
-				"title": "Gate", "nameCodes": ["BI100", "BI110", "BI120"],
-				"title": "Pedestrian Path", "nameCodes": ["BJ100", "BJ110", "BJ120", "BJ130"],
-				"title": "Steps", "nameCodes": ["BM100"],
-				"title": "Roadway", "nameCodes": ["BN100"],
-				"title": "Barrier", "nameCodes": ["BL100"],
-				"title": "RRV Ramp", "nameCodes": ["BK100"]
-			}]},
+            "title": "Restricted Use Gate",
+            "nameCodes": ["BO100"]
+          },
+          {
+            "title": "Access Facility",
+            "nameCodes": ["BH100"],
+            "children": [
+              { "title": "Gate", "nameCodes": ["BI100", "BI110", "BI120"] },
+              {
+                "title": "Pedestrian Path",
+                "nameCodes": ["BJ100", "BJ110", "BJ120", "BJ130"]
+              },
+              { "title": "Steps", "nameCodes": ["BM100"] },
+              { "title": "Roadway", "nameCodes": ["BN100"] },
+              { "title": "Barrier", "nameCodes": ["BL100"] },
+              { "title": "RRV Ramp", "nameCodes": ["BK100"] }
+            ]
+          }
         ]
       }
     }
-	
-	
-	
-	
-	
   ]
 }
