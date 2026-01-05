@@ -1125,7 +1125,7 @@ function loadReferenceTrees() {
     return;
   }
 
-  fetch("reference-trees.json")
+  fetch("reference-trees.json", { cache: "no-store" })
     .then((response) => {
       if (!response.ok) {
         throw new Error("Failed to load reference trees.");
