@@ -9,6 +9,8 @@ const hideObsoleteToggle = document.getElementById("hideObsoleteToggle");
 const errorOnlyToggle = document.getElementById("errorOnlyToggle");
 const assetList = document.getElementById("assetList");
 const listStatus = document.getElementById("listStatus");
+const assetDetailsEmpty = document.getElementById("assetDetailsEmpty");
+const assetDetailsList = document.getElementById("assetDetailsList");
 const treeStatus = document.getElementById("treeStatus");
 const treeContainer = document.getElementById("treeContainer");
 const treeWarningsCount = document.getElementById("treeWarningsCount");
@@ -55,13 +57,42 @@ const COLUMN_ALIASES = {
   assetDesc1: ["Asset Desc 1", "Asset Description 1", "Asset Desc"],
   assetDesc2: ["Asset Desc 2", "Asset Description 2"],
   elr: ["ELR", "ELR Code"],
-  assetClass: ["Asset Class", "Asset Class Code", "Asset Class Description"],
+  assetClass: [
+    "Asset Class Code & Desc",
+    "Asset Class",
+    "Asset Class Code",
+    "Asset Class Description",
+  ],
+  egiCodeDesc: ["EGI Code & Desc", "EGI Code and Desc", "EGI Code Desc", "EGI Code"],
+  structuredPlantNumber: [
+    "Structured Plant Number",
+    "Structured Plant No",
+    "Structured Plant #",
+  ],
+  trackId: ["Track ID", "Track Id", "TrackID"],
+  assetStartMileage: ["Asset Start Mileage", "Start Mileage", "Asset Start Mile"],
+  assetEndMileage: ["Asset End Mileage", "End Mileage", "Asset End Mile"],
   itemNameCodeDesc: [
     "Item Name Code & Desc",
     "Item Name Code and Desc",
     "Item Name Code Desc",
   ],
 };
+
+const ASSET_DETAIL_FIELDS = [
+  { key: "assetNumber", label: "Asset Number" },
+  { key: "assetClass", label: "Asset Class Code & Desc" },
+  { key: "itemNameCodeDesc", label: "Item Name Code & Desc" },
+  { key: "egiCodeDesc", label: "EGI Code & Desc" },
+  { key: "assetDesc1", label: "Asset Desc 1" },
+  { key: "assetDesc2", label: "Asset Desc 2" },
+  { key: "structuredPlantNumber", label: "Structured Plant Number" },
+  { key: "elr", label: "ELR" },
+  { key: "trackId", label: "Track ID" },
+  { key: "assetStartMileage", label: "Asset Start Mileage" },
+  { key: "assetEndMileage", label: "Asset End Mileage" },
+  { key: "assetStatus", label: "Asset Status" },
+];
 
 const EXPORT_HEADERS = [
   "EquipNo",
@@ -201,6 +232,11 @@ function buildMaps(rows, headers) {
   const desc2Idx = findColumn(headers, COLUMN_ALIASES.assetDesc2);
   const elrIdx = findColumn(headers, COLUMN_ALIASES.elr);
   const assetClassIdx = findColumn(headers, COLUMN_ALIASES.assetClass);
+  const egiCodeDescIdx = findColumn(headers, COLUMN_ALIASES.egiCodeDesc);
+  const structuredPlantNumberIdx = findColumn(headers, COLUMN_ALIASES.structuredPlantNumber);
+  const trackIdIdx = findColumn(headers, COLUMN_ALIASES.trackId);
+  const assetStartMileageIdx = findColumn(headers, COLUMN_ALIASES.assetStartMileage);
+  const assetEndMileageIdx = findColumn(headers, COLUMN_ALIASES.assetEndMileage);
   const itemNameIdx = findColumn(headers, COLUMN_ALIASES.itemNameCodeDesc);
 
   if (assetIdx === -1 || parentIdx === -1) {
@@ -222,6 +258,17 @@ function buildMaps(rows, headers) {
       const assetDesc2 = desc2Idx !== -1 ? row[desc2Idx]?.toString().trim() : "";
       const elr = elrIdx !== -1 ? row[elrIdx]?.toString().trim() : "";
       const assetClass = assetClassIdx !== -1 ? row[assetClassIdx]?.toString().trim() : "";
+      const egiCodeDesc =
+        egiCodeDescIdx !== -1 ? row[egiCodeDescIdx]?.toString().trim() : "";
+      const structuredPlantNumber =
+        structuredPlantNumberIdx !== -1
+          ? row[structuredPlantNumberIdx]?.toString().trim()
+          : "";
+      const trackId = trackIdIdx !== -1 ? row[trackIdIdx]?.toString().trim() : "";
+      const assetStartMileage =
+        assetStartMileageIdx !== -1 ? row[assetStartMileageIdx]?.toString().trim() : "";
+      const assetEndMileage =
+        assetEndMileageIdx !== -1 ? row[assetEndMileageIdx]?.toString().trim() : "";
       const itemNameCodeDesc =
         itemNameIdx !== -1 ? row[itemNameIdx]?.toString().trim() : "";
 
@@ -233,6 +280,11 @@ function buildMaps(rows, headers) {
         assetDesc2,
         elr,
         assetClass,
+        egiCodeDesc,
+        structuredPlantNumber,
+        trackId,
+        assetStartMileage,
+        assetEndMileage,
         itemNameCodeDesc,
       };
     })
@@ -448,6 +500,39 @@ function renderAssetList() {
   listStatus.textContent = filtered.length
     ? `${filtered.length} assets loaded.`
     : "No assets match this filter.";
+}
+
+function formatDetailValue(value) {
+  const trimmed = String(value || "").trim();
+  return trimmed ? trimmed : "—";
+}
+
+function updateAssetDetails() {
+  if (!assetDetailsList || !assetDetailsEmpty) {
+    return;
+  }
+
+  if (!selectedAssetNumber || !assetMap.has(selectedAssetNumber)) {
+    assetDetailsList.innerHTML = "";
+    assetDetailsEmpty.textContent = assets.length
+      ? "Select an asset to see its details."
+      : "Upload a file to load asset details.";
+    assetDetailsEmpty.style.display = "block";
+    return;
+  }
+
+  const asset = assetMap.get(selectedAssetNumber);
+  assetDetailsList.innerHTML = "";
+  ASSET_DETAIL_FIELDS.forEach((field) => {
+    const term = document.createElement("dt");
+    term.textContent = field.label;
+    const description = document.createElement("dd");
+    description.textContent = formatDetailValue(asset[field.key]);
+    assetDetailsList.appendChild(term);
+    assetDetailsList.appendChild(description);
+  });
+  assetDetailsEmpty.textContent = "";
+  assetDetailsEmpty.style.display = "none";
 }
 
 function buildSubtree(assetNumber, visited = new Set()) {
@@ -1033,21 +1118,32 @@ function openExistingAssetSelectModal(parentAssetNumber, missingGroups) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "modal-option";
-    button.textContent = asset.assetNumber;
-    const detail = document.createElement("small");
-    detail.textContent =
-      asset.assetDesc1 || asset.assetDesc2 || asset.itemNameCodeDesc || "";
-    if (detail.textContent) {
-      button.appendChild(detail);
-    }
-    if (
-      asset.itemNameCodeDesc &&
-      asset.itemNameCodeDesc !== detail.textContent
-    ) {
-      const item = document.createElement("small");
-      item.textContent = asset.itemNameCodeDesc;
-      button.appendChild(item);
-    }
+    const title = document.createElement("span");
+    title.className = "modal-option-title";
+    title.textContent = asset.assetNumber;
+    button.appendChild(title);
+
+    const detailList = document.createElement("dl");
+    detailList.className = "modal-option-details";
+    const detailFields = [
+      { label: "Asset Desc 1", value: asset.assetDesc1 },
+      { label: "Asset Desc 2", value: asset.assetDesc2 },
+      { label: "Structured Plant Number", value: asset.structuredPlantNumber },
+      { label: "ELR", value: asset.elr },
+      { label: "Track ID", value: asset.trackId },
+      { label: "Asset Start Mileage", value: asset.assetStartMileage },
+      { label: "Asset End Mileage", value: asset.assetEndMileage },
+      { label: "Asset Status", value: asset.assetStatus },
+    ];
+    detailFields.forEach((field) => {
+      const term = document.createElement("dt");
+      term.textContent = field.label;
+      const desc = document.createElement("dd");
+      desc.textContent = formatDetailValue(field.value);
+      detailList.appendChild(term);
+      detailList.appendChild(desc);
+    });
+    button.appendChild(detailList);
     button.addEventListener("click", () => {
       updateAssetParent(asset.assetNumber, parentAssetNumber);
       closeExistingAssetSelectModal();
@@ -1226,6 +1322,7 @@ function selectAsset(assetNumber) {
     selectedAssetNumber = assetNumber;
     renderAssetList();
   }
+  updateAssetDetails();
   renderTree();
 }
 
@@ -1472,6 +1569,8 @@ function handleFile(file) {
 
     if (rows.length < 2) {
       listStatus.textContent = "No data rows found in the file.";
+      selectedAssetNumber = null;
+      updateAssetDetails();
       return;
     }
 
@@ -1479,6 +1578,8 @@ function handleFile(file) {
     if (headerRowIndex === -1) {
       listStatus.textContent =
         "Unable to locate header row. Ensure Asset Number and Parent Asset Number are present.";
+      selectedAssetNumber = null;
+      updateAssetDetails();
       return;
     }
 
@@ -1487,6 +1588,8 @@ function handleFile(file) {
 
     if (dataRows.length === 0) {
       listStatus.textContent = "No data rows found beneath the header row.";
+      selectedAssetNumber = null;
+      updateAssetDetails();
       return;
     }
 
@@ -1495,6 +1598,8 @@ function handleFile(file) {
     } catch (error) {
       listStatus.textContent = error.message;
       assetList.innerHTML = "";
+      selectedAssetNumber = null;
+      updateAssetDetails();
       return;
     }
 
@@ -1503,6 +1608,7 @@ function handleFile(file) {
     updateExportButton();
     selectedAssetNumber = assets[0]?.assetNumber || null;
     renderAssetList();
+    updateAssetDetails();
     renderTree();
   };
   reader.readAsArrayBuffer(file);
