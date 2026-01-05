@@ -880,9 +880,12 @@ function getMissingReferenceChildGroups(asset) {
   }
 
   const existingCodes = getExistingChildCodes(asset.assetNumber);
-  return expectedGroups.filter(
-    (group) => !Array.from(group).some((code) => existingCodes.has(code))
-  );
+  return expectedGroups.filter((group) => {
+    if (group.optional) {
+      return false;
+    }
+    return !Array.from(group.codes).some((code) => existingCodes.has(code));
+  });
 }
 
 function isReferenceMismatch(asset, parentOverride = null) {
@@ -1125,7 +1128,7 @@ function loadReferenceTrees() {
     return;
   }
 
-  fetch("reference-trees.json")
+  fetch("reference-trees.json", { cache: "no-store" })
     .then((response) => {
       if (!response.ok) {
         throw new Error("Failed to load reference trees.");
@@ -1268,9 +1271,10 @@ function buildReferenceChildMap(node) {
   if (node.children?.length) {
     node.children.forEach((child) => {
       if (child.nameCodes?.length) {
-        directChildGroups.push(
-          new Set(child.nameCodes.map((code) => code.toUpperCase()))
-        );
+        directChildGroups.push({
+          codes: new Set(child.nameCodes.map((code) => code.toUpperCase())),
+          optional: Boolean(child.optional),
+        });
       }
       const childMap = buildReferenceChildMap(child);
       childMap.forEach((groups, key) => {
@@ -1295,7 +1299,7 @@ function buildReferenceChildMap(node) {
 }
 
 function formatMissingChildrenGroups(missingGroups) {
-  return missingGroups.map((group) => Array.from(group).join(" or "));
+  return missingGroups.map((group) => Array.from(group.codes).join(" or "));
 }
 
 function getMissingReferenceChildren(asset) {
