@@ -26,6 +26,10 @@ const placeholderSelectModal = document.getElementById("placeholderSelectModal")
 const placeholderSelectList = document.getElementById("placeholderSelectList");
 const placeholderSelectTitle = document.getElementById("placeholderSelectTitle");
 const placeholderSelectCancel = document.getElementById("placeholderSelectCancel");
+const existingAssetSelectModal = document.getElementById("existingAssetSelectModal");
+const existingAssetSelectList = document.getElementById("existingAssetSelectList");
+const existingAssetSelectTitle = document.getElementById("existingAssetSelectTitle");
+const existingAssetSelectCancel = document.getElementById("existingAssetSelectCancel");
 
 let assets = [];
 let assetMap = new Map();
@@ -576,6 +580,26 @@ function createNodeCard(node) {
     }
     const missingGroups = getMissingReferenceChildGroups(assetRecord);
     if (missingGroups.length) {
+      const unassignedCandidates = getUnassignedAssetsForGroups(
+        missingGroups,
+        node.assetNumber
+      );
+      if (unassignedCandidates.length) {
+        const linkExistingButton = document.createElement("button");
+        linkExistingButton.type = "button";
+        linkExistingButton.className = "node-existing-add";
+        linkExistingButton.textContent = "🔗";
+        linkExistingButton.title = "Link an existing unassigned asset";
+        linkExistingButton.setAttribute(
+          "aria-label",
+          "Link an existing unassigned asset"
+        );
+        linkExistingButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          openExistingAssetSelectModal(node.assetNumber, missingGroups);
+        });
+        card.appendChild(linkExistingButton);
+      }
       const addPlaceholderButton = document.createElement("button");
       addPlaceholderButton.type = "button";
       addPlaceholderButton.className = "node-placeholder-add";
@@ -971,6 +995,77 @@ function buildPlaceholderOptions(missingGroups) {
   return options;
 }
 
+function getUnassignedAssetsForGroups(missingGroups, parentAssetNumber) {
+  if (!missingGroups.length) {
+    return [];
+  }
+  const allowedCodes = new Set();
+  missingGroups.forEach((group) => {
+    group.codes.forEach((code) => {
+      allowedCodes.add(code);
+    });
+  });
+  return assets
+    .filter((asset) => {
+      if (!asset || asset.parentAssetNumber) {
+        return false;
+      }
+      if (asset.assetNumber === parentAssetNumber) {
+        return false;
+      }
+      const code = extractNameCode(asset.itemNameCodeDesc);
+      return code && allowedCodes.has(code);
+    })
+    .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
+}
+
+function openExistingAssetSelectModal(parentAssetNumber, missingGroups) {
+  if (!existingAssetSelectModal || !existingAssetSelectList) {
+    return;
+  }
+  existingAssetSelectList.innerHTML = "";
+  if (existingAssetSelectTitle) {
+    existingAssetSelectTitle.textContent = `Link existing asset for ${parentAssetNumber}`;
+  }
+
+  const candidates = getUnassignedAssetsForGroups(missingGroups, parentAssetNumber);
+  candidates.forEach((asset) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "modal-option";
+    button.textContent = asset.assetNumber;
+    const detail = document.createElement("small");
+    detail.textContent =
+      asset.assetDesc1 || asset.assetDesc2 || asset.itemNameCodeDesc || "";
+    if (detail.textContent) {
+      button.appendChild(detail);
+    }
+    if (
+      asset.itemNameCodeDesc &&
+      asset.itemNameCodeDesc !== detail.textContent
+    ) {
+      const item = document.createElement("small");
+      item.textContent = asset.itemNameCodeDesc;
+      button.appendChild(item);
+    }
+    button.addEventListener("click", () => {
+      updateAssetParent(asset.assetNumber, parentAssetNumber);
+      closeExistingAssetSelectModal();
+    });
+    existingAssetSelectList.appendChild(button);
+  });
+
+  if (!candidates.length) {
+    const empty = document.createElement("p");
+    empty.className = "modal-empty";
+    empty.textContent = "No unassigned assets match the missing child groups.";
+    existingAssetSelectList.appendChild(empty);
+  }
+
+  existingAssetSelectModal.classList.remove("hidden");
+  existingAssetSelectModal.setAttribute("aria-hidden", "false");
+}
+
 function openPlaceholderSelectModal(parentAssetNumber, missingGroups) {
   if (!placeholderSelectModal || !placeholderSelectList) {
     return;
@@ -1008,6 +1103,17 @@ function closePlaceholderSelectModal() {
   placeholderSelectModal.setAttribute("aria-hidden", "true");
   if (placeholderSelectList) {
     placeholderSelectList.innerHTML = "";
+  }
+}
+
+function closeExistingAssetSelectModal() {
+  if (!existingAssetSelectModal) {
+    return;
+  }
+  existingAssetSelectModal.classList.add("hidden");
+  existingAssetSelectModal.setAttribute("aria-hidden", "true");
+  if (existingAssetSelectList) {
+    existingAssetSelectList.innerHTML = "";
   }
 }
 
@@ -1538,6 +1644,31 @@ if (placeholderSelectModal) {
       !placeholderSelectModal.classList.contains("hidden")
     ) {
       closePlaceholderSelectModal();
+    }
+  });
+}
+
+if (existingAssetSelectCancel) {
+  existingAssetSelectCancel.addEventListener("click", () => {
+    closeExistingAssetSelectModal();
+  });
+}
+
+if (existingAssetSelectModal) {
+  existingAssetSelectModal.addEventListener("click", (event) => {
+    if (
+      event.target === existingAssetSelectModal ||
+      event.target.classList.contains("modal-backdrop")
+    ) {
+      closeExistingAssetSelectModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      !existingAssetSelectModal.classList.contains("hidden")
+    ) {
+      closeExistingAssetSelectModal();
     }
   });
 }

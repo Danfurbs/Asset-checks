@@ -713,6 +713,35 @@ body {
   background: #1d4ed8;
 }
 
+.node-existing-add {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: none;
+  background: #0f766e;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 14px rgba(15, 118, 110, 0.25);
+}
+
+.node-existing-add:hover,
+.node-existing-add:focus {
+  background: #115e59;
+}
+
+.modal-empty {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #4b5563;
+}
+
 .tree-branch {
   position: relative;
   display: flex;
