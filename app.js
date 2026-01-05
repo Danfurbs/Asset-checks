@@ -1169,7 +1169,8 @@ function isReferenceMismatch(asset, parentOverride = null) {
   const parentAssetNumber =
     parentOverride !== null ? parentOverride : asset.parentAssetNumber;
   if (!parentAssetNumber) {
-    return false;
+    const allowedParents = referenceParentMap.get(assetCode) || new Set();
+    return allowedParents.size > 0;
   }
 
   const parentAsset = assetMap.get(parentAssetNumber);
@@ -1186,7 +1187,7 @@ function isReferenceMismatch(asset, parentOverride = null) {
 }
 
 function hasAssetError(asset) {
-  return isReferenceMismatch(asset);
+  return isReferenceMismatch(asset) || getMissingReferenceChildren(asset).length > 0;
 }
 
 function shouldShowTick(asset) {
@@ -1231,7 +1232,7 @@ function openParentSelectModal(assetNumber, parentOptions) {
 function buildPlaceholderOptions(missingGroups) {
   const options = [];
   missingGroups.forEach((group) => {
-    const codes = Array.from(group).sort((a, b) => a.localeCompare(b));
+    const codes = Array.from(group.codes).sort((a, b) => a.localeCompare(b));
     const groupLabel = codes.join(" or ");
     codes.forEach((code) => {
       options.push({ code, groupLabel });
