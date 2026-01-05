@@ -540,7 +540,7 @@ function updateAssetDetails() {
   assetDetailsEmpty.style.display = "none";
 }
 
-function buildSubtree(assetNumber, visited = new Set()) {
+function buildSubtree(assetNumber, visited = new Set(), childFilter = null) {
   if (visited.has(assetNumber)) {
     return null;
   }
@@ -556,15 +556,29 @@ function buildSubtree(assetNumber, visited = new Set()) {
   }
 
   const children = (childrenMap.get(assetNumber) || [])
-    .map((childNumber) => buildSubtree(childNumber, visited))
+    .filter((childNumber) => {
+      if (!childFilter) {
+        return true;
+      }
+      const childAsset = assetMap.get(childNumber);
+      return childAsset ? childFilter(childAsset) : true;
+    })
+    .map((childNumber) => buildSubtree(childNumber, visited, childFilter))
     .filter(Boolean);
-  const placeholderNodes = (placeholderMap.get(assetNumber) || []).map((placeholder) => ({
-    placeholder: true,
-    placeholderId: placeholder.id,
-    parentAssetNumber: placeholder.parentAssetNumber,
-    itemNameCode: placeholder.itemNameCode,
-    children: [],
-  }));
+  const placeholderNodes = (placeholderMap.get(assetNumber) || [])
+    .filter((placeholder) => {
+      if (!childFilter) {
+        return true;
+      }
+      return isNameCodeInReferenceTree(placeholder.itemNameCode);
+    })
+    .map((placeholder) => ({
+      placeholder: true,
+      placeholderId: placeholder.id,
+      parentAssetNumber: placeholder.parentAssetNumber,
+      itemNameCode: placeholder.itemNameCode,
+      children: [],
+    }));
 
   return {
     assetNumber: asset.assetNumber,
@@ -637,7 +651,7 @@ function linkAncestorChain(chain, leaf) {
   return chain[0];
 }
 
-function buildFamilyTree(assetNumber) {
+function buildFamilyTree(assetNumber, childFilter = null) {
   const asset = assetMap.get(assetNumber);
   if (!asset) {
     return null;
@@ -654,7 +668,7 @@ function buildFamilyTree(assetNumber) {
     current = parentAsset;
   }
 
-  const rootTree = buildSubtree(lastKnown.assetNumber);
+  const rootTree = buildSubtree(lastKnown.assetNumber, new Set(), childFilter);
   if (!rootTree) {
     return null;
   }
@@ -708,6 +722,17 @@ function buildTreeForView(assetNumber) {
     const limitedChain = chain.slice(startIndex, -1);
     const subtree = buildSubtree(assetNumber);
     return linkAncestorChain(limitedChain, subtree);
+  }
+
+  if (treeViewMode === "all") {
+    const selectedAsset = assetMap.get(assetNumber);
+    const selectedCode = extractNameCode(selectedAsset?.itemNameCodeDesc);
+    const shouldLimitToReferenceTree =
+      selectedCode && isNameCodeInReferenceTree(selectedCode);
+    return buildFamilyTree(
+      assetNumber,
+      shouldLimitToReferenceTree ? isAssetInReferenceTree : null
+    );
   }
 
   return buildFamilyTree(assetNumber);
@@ -1051,6 +1076,21 @@ function updateTreeViewControls() {
     treeLevelsWrapper.style.display = "none";
   }
   treeLevelsInput.value = treeLevelsAbove;
+}
+
+function isNameCodeInReferenceTree(code) {
+  if (!code) {
+    return false;
+  }
+  return referenceNameCodes.includes(code.toUpperCase());
+}
+
+function isAssetInReferenceTree(asset) {
+  if (!asset) {
+    return false;
+  }
+  const value = extractNameCode(asset.itemNameCodeDesc);
+  return isNameCodeInReferenceTree(value);
 }
 
 function matchesReferenceGroup(asset, selectedGroup) {
