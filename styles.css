@@ -466,6 +466,8 @@ body {
   padding: 0.45rem 0.75rem;
   background: #f8fafc;
   font-weight: 600;
+  width: 220px;
+  max-width: 100%;
 }
 
 .reference-note {
