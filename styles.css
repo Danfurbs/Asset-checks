@@ -408,6 +408,46 @@ body {
   min-width: 0;
 }
 
+.tree-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 1rem;
+}
+
+.tree-view-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+
+.tree-view-control label {
+  font-weight: 600;
+  color: #111827;
+}
+
+.tree-view-control select,
+.tree-view-control input {
+  border-radius: 10px;
+  border: 1px solid #cbd5f5;
+  padding: 0.45rem 0.75rem;
+  background: #f8fafc;
+  font-weight: 600;
+  min-width: 180px;
+}
+
+.tree-view-levels {
+  display: none;
+}
+
+.tree-view-levels input {
+  min-width: 120px;
+  max-width: 140px;
+}
+
 .tree-warnings {
   margin-top: 1.5rem;
   background: #ffffff;
@@ -502,6 +542,48 @@ body {
   border: 1px solid #e5e7eb;
   padding: 1.25rem;
   box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.reference-panel details + details {
+  margin-top: 1rem;
+}
+
+.reference-details {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+  padding: 0.65rem 0.85rem;
+}
+
+.reference-details summary {
+  list-style: none;
+  cursor: pointer;
+  font-weight: 600;
+  color: #111827;
+}
+
+.reference-details summary::-webkit-details-marker {
+  display: none;
+}
+
+.reference-details summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.5rem;
+  transition: transform 0.2s ease;
+}
+
+.reference-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.reference-details-body {
+  margin-top: 0.65rem;
+}
+
+.reference-panel .asset-details {
+  margin-top: 1rem;
 }
 
 .reference-header {

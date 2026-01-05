@@ -27,15 +27,6 @@
       <section class="panel panel-left">
         <div class="panel-header panel-header-stack">
           <h2>Assets</h2>
-          <details class="asset-details" id="assetDetailsPanel">
-            <summary>Asset details</summary>
-            <div class="asset-details-body">
-              <p class="asset-details-empty" id="assetDetailsEmpty">
-                Upload a file to load asset details.
-              </p>
-              <dl id="assetDetailsList" class="asset-details-list"></dl>
-            </div>
-          </details>
           <div class="filter-controls">
             <details class="filter-panel" open>
               <summary>Filters</summary>
@@ -93,6 +84,30 @@
         </div>
         <div class="tree-layout">
           <div class="tree-panel">
+            <div class="tree-controls" aria-label="Tree view options">
+              <div class="tree-view-control">
+                <label for="treeViewSelect">Tree view</label>
+                <select id="treeViewSelect">
+                  <option value="all">Show all</option>
+                  <option value="below">Show assets below</option>
+                  <option value="branch">Show only this branch</option>
+                  <option value="ancestors">Show ancestors only</option>
+                  <option value="levels">Show levels above</option>
+                  <option value="selected">Show selected only</option>
+                </select>
+              </div>
+              <div class="tree-view-control tree-view-levels" id="treeLevelsWrapper">
+                <label for="treeLevelsInput">Levels above</label>
+                <input
+                  type="number"
+                  id="treeLevelsInput"
+                  min="1"
+                  max="10"
+                  value="2"
+                  step="1"
+                />
+              </div>
+            </div>
             <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
             <div id="treeContainer" class="tree-container"></div>
             <div class="tree-warnings" aria-live="polite">
@@ -116,13 +131,27 @@
                 <option>Switches and Crossings</option>
               </select>
             </div>
-            <p class="reference-note">
-              Nodes are defined using <strong>Item Name Code &amp; Desc</strong> values.
-            </p>
-            <div id="referenceTreeStatus" class="reference-status">
-              Loading reference tree…
-            </div>
-            <ul id="referenceTree" class="reference-tree"></ul>
+            <details class="reference-details" open>
+              <summary>Reference tree structure</summary>
+              <div class="reference-details-body">
+                <p class="reference-note">
+                  Nodes are defined using <strong>Item Name Code &amp; Desc</strong> values.
+                </p>
+                <div id="referenceTreeStatus" class="reference-status">
+                  Loading reference tree…
+                </div>
+                <ul id="referenceTree" class="reference-tree"></ul>
+              </div>
+            </details>
+            <details class="asset-details" id="assetDetailsPanel" open>
+              <summary>Asset details</summary>
+              <div class="asset-details-body">
+                <p class="asset-details-empty" id="assetDetailsEmpty">
+                  Upload a file to load asset details.
+                </p>
+                <dl id="assetDetailsList" class="asset-details-list"></dl>
+              </div>
+            </details>
           </aside>
         </div>
       </section>

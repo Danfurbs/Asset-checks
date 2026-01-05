@@ -19,6 +19,9 @@ const treeWarningsList = document.getElementById("treeWarningsList");
 const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
+const treeViewSelect = document.getElementById("treeViewSelect");
+const treeLevelsInput = document.getElementById("treeLevelsInput");
+const treeLevelsWrapper = document.getElementById("treeLevelsWrapper");
 const exportButton = document.getElementById("exportButton");
 const parentSelectModal = document.getElementById("parentSelectModal");
 const parentSelectList = document.getElementById("parentSelectList");
@@ -43,6 +46,8 @@ let initialMismatchAssets = new Set();
 let placeholderAssets = [];
 let placeholderMap = new Map();
 let placeholderCounter = 0;
+let treeViewMode = "all";
+let treeLevelsAbove = 2;
 
 let referenceTrees = [];
 let referenceNameCodes = [];
@@ -572,6 +577,66 @@ function buildSubtree(assetNumber, visited = new Set()) {
   };
 }
 
+function buildAssetNode(assetNumber) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset) {
+    return {
+      assetNumber,
+      missing: true,
+      children: [],
+    };
+  }
+  return {
+    assetNumber: asset.assetNumber,
+    assetStatus: asset.assetStatus,
+    assetDesc1: asset.assetDesc1,
+    assetDesc2: asset.assetDesc2,
+    itemNameCodeDesc: asset.itemNameCodeDesc,
+    missing: false,
+    children: [],
+  };
+}
+
+function buildAncestorChain(assetNumber) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset) {
+    return [];
+  }
+
+  const chain = [];
+  let current = asset;
+  chain.unshift(buildAssetNode(current.assetNumber));
+
+  while (current.parentAssetNumber) {
+    const parent = assetMap.get(current.parentAssetNumber);
+    if (!parent) {
+      chain.unshift({
+        assetNumber: current.parentAssetNumber,
+        missing: true,
+        children: [],
+      });
+      break;
+    }
+    current = parent;
+    chain.unshift(buildAssetNode(current.assetNumber));
+  }
+
+  return chain;
+}
+
+function linkAncestorChain(chain, leaf) {
+  if (!chain.length) {
+    return leaf;
+  }
+
+  for (let i = 0; i < chain.length - 1; i += 1) {
+    chain[i].children = [chain[i + 1]];
+  }
+  const last = chain[chain.length - 1];
+  last.children = leaf ? [leaf] : last.children;
+  return chain[0];
+}
+
 function buildFamilyTree(assetNumber) {
   const asset = assetMap.get(assetNumber);
   if (!asset) {
@@ -603,6 +668,49 @@ function buildFamilyTree(assetNumber) {
   }
 
   return rootTree;
+}
+
+function buildTreeForView(assetNumber) {
+  if (!assetNumber) {
+    return null;
+  }
+
+  if (treeViewMode === "below") {
+    return buildSubtree(assetNumber);
+  }
+
+  if (treeViewMode === "selected") {
+    return buildAssetNode(assetNumber);
+  }
+
+  if (treeViewMode === "ancestors") {
+    const chain = buildAncestorChain(assetNumber);
+    return linkAncestorChain(chain, null);
+  }
+
+  if (treeViewMode === "branch") {
+    const chain = buildAncestorChain(assetNumber);
+    const subtree = buildSubtree(assetNumber);
+    if (!chain.length) {
+      return subtree;
+    }
+    const chainWithoutSelected = chain.slice(0, -1);
+    return linkAncestorChain(chainWithoutSelected, subtree);
+  }
+
+  if (treeViewMode === "levels") {
+    const chain = buildAncestorChain(assetNumber);
+    if (!chain.length) {
+      return buildSubtree(assetNumber);
+    }
+    const levels = Math.max(1, Math.min(10, treeLevelsAbove || 1));
+    const startIndex = Math.max(0, chain.length - (levels + 1));
+    const limitedChain = chain.slice(startIndex, -1);
+    const subtree = buildSubtree(assetNumber);
+    return linkAncestorChain(limitedChain, subtree);
+  }
+
+  return buildFamilyTree(assetNumber);
 }
 
 function createNodeCard(node) {
@@ -921,7 +1029,7 @@ function renderTree() {
     return;
   }
 
-  const tree = buildFamilyTree(selectedAssetNumber);
+  const tree = buildTreeForView(selectedAssetNumber);
   if (!tree) {
     treeStatus.textContent = "Unable to build a tree for this asset.";
     resetTreeWarnings("No warnings available for this tree.");
@@ -931,6 +1039,18 @@ function renderTree() {
   treeStatus.textContent = "";
   treeContainer.appendChild(renderTreeNode(tree));
   renderTreeWarnings(tree);
+}
+
+function updateTreeViewControls() {
+  if (!treeLevelsWrapper || !treeLevelsInput) {
+    return;
+  }
+  if (treeViewMode === "levels") {
+    treeLevelsWrapper.style.display = "flex";
+  } else {
+    treeLevelsWrapper.style.display = "none";
+  }
+  treeLevelsInput.value = treeLevelsAbove;
 }
 
 function matchesReferenceGroup(asset, selectedGroup) {
@@ -1786,4 +1906,25 @@ referenceTreeSelect.addEventListener("change", (event) => {
   }
 });
 
+if (treeViewSelect) {
+  treeViewMode = treeViewSelect.value;
+  treeViewSelect.addEventListener("change", (event) => {
+    treeViewMode = event.target.value;
+    updateTreeViewControls();
+    renderTree();
+  });
+}
+
+if (treeLevelsInput) {
+  treeLevelsInput.addEventListener("input", (event) => {
+    const value = Number.parseInt(event.target.value, 10);
+    if (Number.isNaN(value)) {
+      return;
+    }
+    treeLevelsAbove = Math.max(1, Math.min(10, value));
+    renderTree();
+  });
+}
+
+updateTreeViewControls();
 loadReferenceTrees();
