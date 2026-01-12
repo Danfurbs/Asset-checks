@@ -84,7 +84,7 @@
             "children": [
               {
                 "title": "Vegetation Area",
-                "nameCodes": ["VN100", "VN110", "VN120" ],
+                "nameCodes": ["VN100", "VN110", "VN120"],
                 "children": [
                   {
                     "title": "Vegetation 1/8th Mile Section",
@@ -103,6 +103,44 @@
           }
         ]
       }
+    },
+
+    // ➕ New tree: Boundary
+    {
+      "id": "boundary",
+      "label": "Boundary",
+      "root": {
+        "title": "ELR",
+        "nameCodes": ["15"],
+        "ignoreFromErrors": true,
+        "children": [
+          {
+            "title": "Boundary Side",
+            "nameCodes": ["BE100", "BE110", "BE120"],
+            "children": [
+              {
+                "title": "Boundary Area",
+                "nameCodes": ["BC100", "BC110", "BC120"],
+                "children": [
+                  
+{
+  "title": "Boundary Measure",
+  "nameCodes": [
+    "BD100", "BD110", "BD120", "BD130", "BD140",
+    "BD150", "BD160", "BD170", "BD180", "BD190",
+    "BD200", "BD210", "BD220", "BD230", "BD240",
+    "BD250", "BD260", "BD270", "BD280", "BD290",
+    "BD300", "BD310", "BD320"
+  ]
+}
+
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
+``
