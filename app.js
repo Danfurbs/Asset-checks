@@ -35,6 +35,13 @@ const existingAssetSelectModal = document.getElementById("existingAssetSelectMod
 const existingAssetSelectList = document.getElementById("existingAssetSelectList");
 const existingAssetSelectTitle = document.getElementById("existingAssetSelectTitle");
 const existingAssetSelectCancel = document.getElementById("existingAssetSelectCancel");
+const existingAssetSearch = document.getElementById("existingAssetSearch");
+const existingAssetItemFilter = document.getElementById("existingAssetItemFilter");
+const orphanParentSelectModal = document.getElementById("orphanParentSelectModal");
+const orphanParentSelectList = document.getElementById("orphanParentSelectList");
+const orphanParentSelectTitle = document.getElementById("orphanParentSelectTitle");
+const orphanParentSelectCancel = document.getElementById("orphanParentSelectCancel");
+const orphanParentSearch = document.getElementById("orphanParentSearch");
 
 let assets = [];
 let assetMap = new Map();
@@ -48,6 +55,10 @@ let placeholderMap = new Map();
 let placeholderCounter = 0;
 let treeViewMode = "all";
 let treeLevelsAbove = 2;
+let existingAssetCandidates = [];
+let existingAssetTargetParentNumber = null;
+let orphanParentCandidates = [];
+let orphanTargetAssetNumber = null;
 
 let referenceTrees = [];
 let referenceNameCodes = [];
@@ -398,7 +409,7 @@ function renderAssetList() {
     const matchesQuery = label.includes(query);
     const itemValue = asset.itemNameCodeDesc?.trim() || "";
     const matchesGroup = matchesReferenceGroup(asset, selectedGroup);
-    const isObsolete = asset.assetStatus?.startsWith("OR");
+    const isObsolete = isObsoleteAsset(asset);
     const matchesObsolete = hideObsolete ? !isObsolete : true;
     const matchesErrors = errorsOnly ? hasAssetError(asset) : true;
 
@@ -473,6 +484,13 @@ function renderAssetList() {
         warning.title = buildMissingChildrenTitle(missingChildren);
         button.appendChild(warning);
       }
+      if (isOrphanedAsset(asset)) {
+        const orphan = document.createElement("span");
+        orphan.className = "asset-orphan";
+        orphan.textContent = "!";
+        orphan.title = "Orphaned: parent asset is obsolete";
+        button.appendChild(orphan);
+      }
       if (shouldShowTick(asset)) {
         const tick = document.createElement("span");
         tick.className = "asset-tick";
@@ -510,6 +528,21 @@ function renderAssetList() {
 function formatDetailValue(value) {
   const trimmed = String(value || "").trim();
   return trimmed ? trimmed : "—";
+}
+
+function isObsoleteAsset(asset) {
+  return asset?.assetStatus?.startsWith("OR");
+}
+
+function isOrphanedAsset(asset) {
+  if (!asset?.parentAssetNumber) {
+    return false;
+  }
+  const parentAsset = assetMap.get(asset.parentAssetNumber);
+  if (!parentAsset) {
+    return false;
+  }
+  return isObsoleteAsset(parentAsset);
 }
 
 function updateAssetDetails() {
@@ -768,11 +801,20 @@ function createNodeCard(node) {
     card.classList.add("selected");
   }
 
-  if (node.assetStatus?.startsWith("OR")) {
+  if (isObsoleteAsset(node)) {
     card.classList.add("obsolete");
   }
 
   const assetRecord = assetMap.get(node.assetNumber);
+  const isOrphaned = assetRecord && isOrphanedAsset(assetRecord);
+  if (isOrphaned) {
+    card.classList.add("orphaned");
+    const orphanBadge = document.createElement("span");
+    orphanBadge.className = "node-orphan";
+    orphanBadge.textContent = "!";
+    orphanBadge.title = "Orphaned: parent asset is obsolete";
+    card.appendChild(orphanBadge);
+  }
   if (assetRecord && isReferenceMismatch(assetRecord)) {
     const alert = document.createElement("span");
     alert.className = "node-alert";
@@ -830,6 +872,19 @@ function createNodeCard(node) {
       });
       card.appendChild(addPlaceholderButton);
     }
+  }
+  if (isOrphaned) {
+    const reassignButton = document.createElement("button");
+    reassignButton.type = "button";
+    reassignButton.className = "node-reassign-parent";
+    reassignButton.textContent = "↺";
+    reassignButton.title = "Assign a new parent";
+    reassignButton.setAttribute("aria-label", "Assign a new parent");
+    reassignButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openOrphanParentSelectModal(node.assetNumber);
+    });
+    card.appendChild(reassignButton);
   }
 
   const desc = node.assetDesc1 || node.assetDesc2 || "";
@@ -977,6 +1032,17 @@ function collectTreeWarnings(node, warnings = [], visited = new Set()) {
       });
     }
     if (assetRecord) {
+      if (isOrphanedAsset(assetRecord)) {
+        const parentAsset = assetMap.get(assetRecord.parentAssetNumber);
+        const parentLabel = parentAsset
+          ? ` (parent ${parentAsset.assetNumber} is obsolete)`
+          : "";
+        warnings.push({
+          type: "orphaned",
+          assetNumber: node.assetNumber,
+          message: `Orphaned child asset${parentLabel}.`,
+        });
+      }
       const missingChildren = getMissingReferenceChildren(assetRecord);
       if (missingChildren.length) {
         warnings.push({
@@ -1187,7 +1253,11 @@ function isReferenceMismatch(asset, parentOverride = null) {
 }
 
 function hasAssetError(asset) {
-  return isReferenceMismatch(asset) || getMissingReferenceChildren(asset).length > 0;
+  return (
+    isReferenceMismatch(asset) ||
+    getMissingReferenceChildren(asset).length > 0 ||
+    isOrphanedAsset(asset)
+  );
 }
 
 function shouldShowTick(asset) {
@@ -1265,59 +1335,143 @@ function getUnassignedAssetsForGroups(missingGroups, parentAssetNumber) {
     .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
 }
 
-function openExistingAssetSelectModal(parentAssetNumber, missingGroups) {
-  if (!existingAssetSelectModal || !existingAssetSelectList) {
+function buildAssetOptionButton(asset, onSelect) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "modal-option";
+  const title = document.createElement("span");
+  title.className = "modal-option-title";
+  title.textContent = asset.assetNumber;
+  button.appendChild(title);
+
+  const detailList = document.createElement("dl");
+  detailList.className = "modal-option-details";
+  const detailFields = [
+    { label: "Item Name Code & Desc", value: asset.itemNameCodeDesc },
+    { label: "Asset Desc 1", value: asset.assetDesc1 },
+    { label: "Asset Desc 2", value: asset.assetDesc2 },
+    { label: "Structured Plant Number", value: asset.structuredPlantNumber },
+    { label: "ELR", value: asset.elr },
+    { label: "Track ID", value: asset.trackId },
+    { label: "Asset Start Mileage", value: asset.assetStartMileage },
+    { label: "Asset End Mileage", value: asset.assetEndMileage },
+    { label: "Asset Status", value: asset.assetStatus },
+  ];
+  detailFields.forEach((field) => {
+    const term = document.createElement("dt");
+    term.textContent = field.label;
+    const desc = document.createElement("dd");
+    desc.textContent = formatDetailValue(field.value);
+    detailList.appendChild(term);
+    detailList.appendChild(desc);
+  });
+  button.appendChild(detailList);
+
+  button.addEventListener("click", () => {
+    onSelect(asset);
+  });
+  return button;
+}
+
+function updateExistingAssetItemFilter(candidates) {
+  if (!existingAssetItemFilter) {
+    return;
+  }
+  const codes = new Set();
+  let hasEmpty = false;
+  candidates.forEach((asset) => {
+    const code = extractNameCode(asset.itemNameCodeDesc);
+    if (code) {
+      codes.add(code);
+    } else {
+      hasEmpty = true;
+    }
+  });
+  existingAssetItemFilter.innerHTML = "";
+  const allOption = document.createElement("option");
+  allOption.value = "all";
+  allOption.textContent = "All item codes";
+  existingAssetItemFilter.appendChild(allOption);
+  if (hasEmpty) {
+    const emptyOption = document.createElement("option");
+    emptyOption.value = "__empty__";
+    emptyOption.textContent = "No item code";
+    existingAssetItemFilter.appendChild(emptyOption);
+  }
+  Array.from(codes)
+    .sort((a, b) => a.localeCompare(b))
+    .forEach((code) => {
+      const option = document.createElement("option");
+      option.value = code;
+      option.textContent = code;
+      existingAssetItemFilter.appendChild(option);
+    });
+}
+
+function matchesExistingAssetFilters(asset) {
+  const query = existingAssetSearch?.value.trim().toLowerCase() || "";
+  const selectedCode = existingAssetItemFilter?.value || "all";
+  const searchLabel = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc} ${asset.elr}`.toLowerCase();
+  const matchesSearch = query ? searchLabel.includes(query) : true;
+  const itemCode = extractNameCode(asset.itemNameCodeDesc);
+  const matchesCode =
+    selectedCode === "all"
+      ? true
+      : selectedCode === "__empty__"
+        ? !itemCode
+        : itemCode === selectedCode;
+  return matchesSearch && matchesCode;
+}
+
+function renderExistingAssetCandidateList() {
+  if (!existingAssetSelectList) {
     return;
   }
   existingAssetSelectList.innerHTML = "";
-  if (existingAssetSelectTitle) {
-    existingAssetSelectTitle.textContent = `Link existing asset for ${parentAssetNumber}`;
-  }
-
-  const candidates = getUnassignedAssetsForGroups(missingGroups, parentAssetNumber);
-  candidates.forEach((asset) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "modal-option";
-    const title = document.createElement("span");
-    title.className = "modal-option-title";
-    title.textContent = asset.assetNumber;
-    button.appendChild(title);
-
-    const detailList = document.createElement("dl");
-    detailList.className = "modal-option-details";
-    const detailFields = [
-      { label: "Asset Desc 1", value: asset.assetDesc1 },
-      { label: "Asset Desc 2", value: asset.assetDesc2 },
-      { label: "Structured Plant Number", value: asset.structuredPlantNumber },
-      { label: "ELR", value: asset.elr },
-      { label: "Track ID", value: asset.trackId },
-      { label: "Asset Start Mileage", value: asset.assetStartMileage },
-      { label: "Asset End Mileage", value: asset.assetEndMileage },
-      { label: "Asset Status", value: asset.assetStatus },
-    ];
-    detailFields.forEach((field) => {
-      const term = document.createElement("dt");
-      term.textContent = field.label;
-      const desc = document.createElement("dd");
-      desc.textContent = formatDetailValue(field.value);
-      detailList.appendChild(term);
-      detailList.appendChild(desc);
-    });
-    button.appendChild(detailList);
-    button.addEventListener("click", () => {
-      updateAssetParent(asset.assetNumber, parentAssetNumber);
+  const filtered = existingAssetCandidates.filter((asset) =>
+    matchesExistingAssetFilters(asset)
+  );
+  filtered.forEach((asset) => {
+    const button = buildAssetOptionButton(asset, (selected) => {
+      updateAssetParent(selected.assetNumber, existingAssetTargetParentNumber);
       closeExistingAssetSelectModal();
     });
     existingAssetSelectList.appendChild(button);
   });
-
-  if (!candidates.length) {
+  if (!filtered.length) {
     const empty = document.createElement("p");
     empty.className = "modal-empty";
-    empty.textContent = "No unassigned assets match the missing child groups.";
+    empty.textContent = existingAssetCandidates.length
+      ? "No matching assets found."
+      : "No unassigned assets match the missing child groups.";
     existingAssetSelectList.appendChild(empty);
   }
+}
+
+function openExistingAssetSelectModal(parentAssetNumber, missingGroups) {
+  if (!existingAssetSelectModal || !existingAssetSelectList) {
+    return;
+  }
+  if (existingAssetSelectTitle) {
+    existingAssetSelectTitle.textContent = `Link existing asset for ${parentAssetNumber}`;
+  }
+
+  existingAssetTargetParentNumber = parentAssetNumber;
+  existingAssetCandidates = getUnassignedAssetsForGroups(
+    missingGroups,
+    parentAssetNumber
+  );
+  if (existingAssetSearch) {
+    existingAssetSearch.value = "";
+  }
+  if (existingAssetItemFilter) {
+    existingAssetItemFilter.value = "all";
+  }
+  updateExistingAssetItemFilter(existingAssetCandidates);
+  if (existingAssetItemFilter) {
+    existingAssetItemFilter.value = "all";
+  }
+  renderExistingAssetCandidateList();
 
   existingAssetSelectModal.classList.remove("hidden");
   existingAssetSelectModal.setAttribute("aria-hidden", "false");
@@ -1372,6 +1526,90 @@ function closeExistingAssetSelectModal() {
   if (existingAssetSelectList) {
     existingAssetSelectList.innerHTML = "";
   }
+  existingAssetCandidates = [];
+  existingAssetTargetParentNumber = null;
+}
+
+function getParentCandidates(assetNumber) {
+  return assets
+    .filter((asset) => {
+      if (!asset) {
+        return false;
+      }
+      if (asset.assetNumber === assetNumber) {
+        return false;
+      }
+      if (isDescendant(assetNumber, asset.assetNumber)) {
+        return false;
+      }
+      return !isObsoleteAsset(asset);
+    })
+    .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
+}
+
+function matchesOrphanParentSearch(asset) {
+  const query = orphanParentSearch?.value.trim().toLowerCase() || "";
+  if (!query) {
+    return true;
+  }
+  const label = `${asset.assetNumber} ${asset.assetDesc1} ${asset.assetDesc2} ${asset.itemNameCodeDesc} ${asset.elr}`.toLowerCase();
+  return label.includes(query);
+}
+
+function renderOrphanParentCandidateList() {
+  if (!orphanParentSelectList) {
+    return;
+  }
+  orphanParentSelectList.innerHTML = "";
+  const filtered = orphanParentCandidates.filter((asset) =>
+    matchesOrphanParentSearch(asset)
+  );
+  filtered.forEach((asset) => {
+    const button = buildAssetOptionButton(asset, (selected) => {
+      if (!orphanTargetAssetNumber) {
+        return;
+      }
+      updateAssetParent(orphanTargetAssetNumber, selected.assetNumber);
+      closeOrphanParentSelectModal();
+    });
+    orphanParentSelectList.appendChild(button);
+  });
+  if (!filtered.length) {
+    const empty = document.createElement("p");
+    empty.className = "modal-empty";
+    empty.textContent = "No matching parent assets found.";
+    orphanParentSelectList.appendChild(empty);
+  }
+}
+
+function openOrphanParentSelectModal(assetNumber) {
+  if (!orphanParentSelectModal || !orphanParentSelectList) {
+    return;
+  }
+  orphanTargetAssetNumber = assetNumber;
+  if (orphanParentSelectTitle) {
+    orphanParentSelectTitle.textContent = `Assign new parent for ${assetNumber}`;
+  }
+  orphanParentCandidates = getParentCandidates(assetNumber);
+  if (orphanParentSearch) {
+    orphanParentSearch.value = "";
+  }
+  renderOrphanParentCandidateList();
+  orphanParentSelectModal.classList.remove("hidden");
+  orphanParentSelectModal.setAttribute("aria-hidden", "false");
+}
+
+function closeOrphanParentSelectModal() {
+  if (!orphanParentSelectModal) {
+    return;
+  }
+  orphanParentSelectModal.classList.add("hidden");
+  orphanParentSelectModal.setAttribute("aria-hidden", "true");
+  if (orphanParentSelectList) {
+    orphanParentSelectList.innerHTML = "";
+  }
+  orphanParentCandidates = [];
+  orphanTargetAssetNumber = null;
 }
 
 function closeParentSelectModal() {
@@ -1921,6 +2159,18 @@ if (existingAssetSelectCancel) {
   });
 }
 
+if (existingAssetSearch) {
+  existingAssetSearch.addEventListener("input", () => {
+    renderExistingAssetCandidateList();
+  });
+}
+
+if (existingAssetItemFilter) {
+  existingAssetItemFilter.addEventListener("change", () => {
+    renderExistingAssetCandidateList();
+  });
+}
+
 if (existingAssetSelectModal) {
   existingAssetSelectModal.addEventListener("click", (event) => {
     if (
@@ -1936,6 +2186,37 @@ if (existingAssetSelectModal) {
       !existingAssetSelectModal.classList.contains("hidden")
     ) {
       closeExistingAssetSelectModal();
+    }
+  });
+}
+
+if (orphanParentSelectCancel) {
+  orphanParentSelectCancel.addEventListener("click", () => {
+    closeOrphanParentSelectModal();
+  });
+}
+
+if (orphanParentSearch) {
+  orphanParentSearch.addEventListener("input", () => {
+    renderOrphanParentCandidateList();
+  });
+}
+
+if (orphanParentSelectModal) {
+  orphanParentSelectModal.addEventListener("click", (event) => {
+    if (
+      event.target === orphanParentSelectModal ||
+      event.target.classList.contains("modal-backdrop")
+    ) {
+      closeOrphanParentSelectModal();
+    }
+  });
+  document.addEventListener("keydown", (event) => {
+    if (
+      event.key === "Escape" &&
+      !orphanParentSelectModal.classList.contains("hidden")
+    ) {
+      closeOrphanParentSelectModal();
     }
   });
 }
