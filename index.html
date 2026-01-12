@@ -79,6 +79,9 @@
             <span class="legend-item"><span class="legend-box"></span>Active</span>
             <span class="legend-item"><span class="legend-box legend-missing"></span>Asset not in download</span>
             <span class="legend-item"><span class="legend-box legend-obsolete"></span>Obsolete record</span>
+            <span class="legend-item">
+              <span class="legend-box legend-orphaned"></span>Orphaned (parent obsolete)
+            </span>
             <span class="legend-item"><span class="legend-warning">!</span>Missing expected child</span>
           </div>
         </div>
@@ -206,9 +209,49 @@
         <p class="modal-description">
           Choose an unassigned asset to add as a child in this tree.
         </p>
+        <div class="modal-filters">
+          <input
+            type="search"
+            id="existingAssetSearch"
+            placeholder="Search by asset number, description, or ELR"
+            aria-label="Search unassigned assets"
+          />
+          <select id="existingAssetItemFilter" aria-label="Filter by item code">
+            <option value="all">All item codes</option>
+          </select>
+        </div>
         <div id="existingAssetSelectList" class="modal-list"></div>
         <div class="modal-actions">
           <button type="button" id="existingAssetSelectCancel" class="modal-cancel">
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div id="orphanParentSelectModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div
+        class="modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="orphanParentSelectTitle"
+      >
+        <h3 id="orphanParentSelectTitle">Assign new parent</h3>
+        <p class="modal-description">
+          Select a new parent for this orphaned asset.
+        </p>
+        <div class="modal-filters">
+          <input
+            type="search"
+            id="orphanParentSearch"
+            placeholder="Search parent asset number, description, or ELR"
+            aria-label="Search parent assets"
+          />
+        </div>
+        <div id="orphanParentSelectList" class="modal-list"></div>
+        <div class="modal-actions">
+          <button type="button" id="orphanParentSelectCancel" class="modal-cancel">
             Cancel
           </button>
         </div>
