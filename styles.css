@@ -466,6 +466,22 @@ body {
   max-width: 140px;
 }
 
+
+.tree-associated-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  padding-bottom: 0.5rem;
+}
+
+.tree-associated-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 .tree-warnings {
   margin-top: 1.5rem;
   background: #ffffff;
@@ -794,6 +810,21 @@ body {
   box-shadow: 0 6px 14px rgba(37, 99, 235, 0.2);
 }
 
+.node-card.associated-source {
+  border-color: #d97706;
+  box-shadow: 0 8px 18px rgba(217, 119, 6, 0.2);
+}
+
+.node-card.associated-target {
+  border-color: #0e7490;
+  box-shadow: 0 8px 18px rgba(14, 116, 144, 0.2);
+}
+
+.node-card.associated-source.associated-target {
+  border-color: #7c3aed;
+  box-shadow: 0 8px 18px rgba(124, 58, 237, 0.25);
+}
+
 .node-card.missing {
   background: #d1d5db;
   border-color: #9ca3af;
@@ -1003,8 +1034,8 @@ body {
 
 .tree-associated {
   margin-top: 0.25rem;
-  border: 1px dashed #94a3b8;
-  background: #f8fafc;
+  border: 2px dashed #f59e0b;
+  background: #fff7ed;
   border-radius: 12px;
   padding: 0.55rem 0.7rem;
   min-width: 220px;
@@ -1015,7 +1046,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #475569;
+  color: #9a3412;
   margin-bottom: 0.45rem;
 }
 
@@ -1026,9 +1057,9 @@ body {
 }
 
 .tree-associated-chip {
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1e3a8a;
+  border: 1px solid #67e8f9;
+  background: #ecfeff;
+  color: #155e75;
   border-radius: 999px;
   font-size: 0.75rem;
   font-weight: 600;
@@ -1038,8 +1069,8 @@ body {
 
 .tree-associated-chip:hover,
 .tree-associated-chip:focus {
-  background: #dbeafe;
-  border-color: #60a5fa;
+  background: #cffafe;
+  border-color: #06b6d4;
 }
 
 
