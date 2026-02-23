@@ -466,6 +466,22 @@ body {
   max-width: 140px;
 }
 
+
+.tree-associated-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #374151;
+  padding-bottom: 0.5rem;
+}
+
+.tree-associated-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 .tree-warnings {
   margin-top: 1.5rem;
   background: #ffffff;

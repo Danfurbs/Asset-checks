@@ -22,6 +22,7 @@ const referenceTree = document.getElementById("referenceTree");
 const treeViewSelect = document.getElementById("treeViewSelect");
 const treeLevelsInput = document.getElementById("treeLevelsInput");
 const treeLevelsWrapper = document.getElementById("treeLevelsWrapper");
+const showAssociatedToggle = document.getElementById("showAssociatedToggle");
 const exportButton = document.getElementById("exportButton");
 const parentSelectModal = document.getElementById("parentSelectModal");
 const parentSelectList = document.getElementById("parentSelectList");
@@ -55,6 +56,7 @@ let placeholderMap = new Map();
 let placeholderCounter = 0;
 let treeViewMode = "all";
 let treeLevelsAbove = 2;
+let showAssociatedEquipment = true;
 let existingAssetCandidates = [];
 let existingAssetTargetParentNumber = null;
 let orphanParentCandidates = [];
@@ -1055,12 +1057,17 @@ function collectAssociatedRoleIndex(
   return index;
 }
 
-function renderTreeNode(node, treeCodeIndex = new Map(), associatedRoleIndex = new Map()) {
+function renderTreeNode(
+  node,
+  treeCodeIndex = new Map(),
+  associatedRoleIndex = new Map(),
+  showAssociated = true
+) {
   const nodeWrapper = document.createElement("div");
   nodeWrapper.className = "tree-node";
 
   const card = createNodeCard(node);
-  if (!node.missing && !node.placeholder && node.assetNumber) {
+  if (showAssociated && !node.missing && !node.placeholder && node.assetNumber) {
     const relationshipRole = associatedRoleIndex.get(node.assetNumber);
     if (relationshipRole?.source) {
       card.classList.add("associated-source");
@@ -1110,14 +1117,16 @@ function renderTreeNode(node, treeCodeIndex = new Map(), associatedRoleIndex = n
     }
     node.children.forEach((child) => {
       childrenWrapper.appendChild(
-        renderTreeNode(child, treeCodeIndex, associatedRoleIndex)
+        renderTreeNode(child, treeCodeIndex, associatedRoleIndex, showAssociated)
       );
     });
     branchWrapper.appendChild(childrenWrapper);
     nodeWrapper.appendChild(branchWrapper);
   }
 
-  const associatedTargets = getAssociatedTargets(node, treeCodeIndex);
+  const associatedTargets = showAssociated
+    ? getAssociatedTargets(node, treeCodeIndex)
+    : [];
   if (associatedTargets.length) {
     const associatedWrapper = document.createElement("div");
     associatedWrapper.className = "tree-associated";
@@ -1272,9 +1281,16 @@ function renderTree() {
 
   treeStatus.textContent = "";
   const treeCodeIndex = collectTreeCodeIndex(tree);
-  const associatedRoleIndex = collectAssociatedRoleIndex(tree, treeCodeIndex);
+  const associatedRoleIndex = showAssociatedEquipment
+    ? collectAssociatedRoleIndex(tree, treeCodeIndex)
+    : new Map();
   treeContainer.appendChild(
-    renderTreeNode(tree, treeCodeIndex, associatedRoleIndex)
+    renderTreeNode(
+      tree,
+      treeCodeIndex,
+      associatedRoleIndex,
+      showAssociatedEquipment
+    )
   );
   renderTreeWarnings(tree);
 }
@@ -2431,6 +2447,14 @@ if (treeLevelsInput) {
       return;
     }
     treeLevelsAbove = Math.max(1, Math.min(10, value));
+    renderTree();
+  });
+}
+
+if (showAssociatedToggle) {
+  showAssociatedEquipment = showAssociatedToggle.checked;
+  showAssociatedToggle.addEventListener("change", (event) => {
+    showAssociatedEquipment = event.target.checked;
     renderTree();
   });
 }
