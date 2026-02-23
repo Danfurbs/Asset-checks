@@ -40,22 +40,22 @@
       "label": "Point Operating Equipment",
       "associations": [
         {
-          "fromCodes": ["PO100"],
-          "toCodes": ["ST100"],
+          "fromCodes": ["PO200", "PO210", "PO220", "PO230"],
+          "toCodes": ["AP100"],
           "bidirectional": true
         }
       ],
       "root": {
         "title": "Point Operating Equip",
-        "nameCodes": ["PO100"],
+        "nameCodes": ["PO200", "PO210", "PO220", "PO230"],
         "children": [
           {
             "title": "Point Detection",
-            "nameCodes": ["CX100"]
+            "nameCodes": ["CX200", "CX210"]
           },
           {
             "title": "Supplementary Drive",
-            "nameCodes": ["PD100"]
+            "nameCodes": ["PD100", "PD110"]
           }
         ]
       }
