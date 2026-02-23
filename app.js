@@ -1012,11 +1012,63 @@ function getAssociatedTargets(node, treeCodeIndex) {
     .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
 }
 
-function renderTreeNode(node, treeCodeIndex = new Map()) {
+function collectAssociatedRoleIndex(
+  node,
+  treeCodeIndex,
+  index = new Map(),
+  visited = new Set()
+) {
+  if (!node) {
+    return index;
+  }
+
+  const nodeKey = `${node.assetNumber || "unknown"}-${node.placeholder ? "placeholder" : "asset"}-${node.missing ? "missing" : "active"}`;
+  if (visited.has(nodeKey)) {
+    return index;
+  }
+  visited.add(nodeKey);
+
+  if (!node.missing && !node.placeholder && node.assetNumber) {
+    const associatedTargets = getAssociatedTargets(node, treeCodeIndex);
+    if (associatedTargets.length) {
+      const sourceRole = index.get(node.assetNumber) || {
+        source: false,
+        target: false,
+      };
+      sourceRole.source = true;
+      index.set(node.assetNumber, sourceRole);
+
+      associatedTargets.forEach((targetAsset) => {
+        const targetRole = index.get(targetAsset.assetNumber) || {
+          source: false,
+          target: false,
+        };
+        targetRole.target = true;
+        index.set(targetAsset.assetNumber, targetRole);
+      });
+    }
+  }
+
+  node.children?.forEach((child) =>
+    collectAssociatedRoleIndex(child, treeCodeIndex, index, visited)
+  );
+  return index;
+}
+
+function renderTreeNode(node, treeCodeIndex = new Map(), associatedRoleIndex = new Map()) {
   const nodeWrapper = document.createElement("div");
   nodeWrapper.className = "tree-node";
 
   const card = createNodeCard(node);
+  if (!node.missing && !node.placeholder && node.assetNumber) {
+    const relationshipRole = associatedRoleIndex.get(node.assetNumber);
+    if (relationshipRole?.source) {
+      card.classList.add("associated-source");
+    }
+    if (relationshipRole?.target) {
+      card.classList.add("associated-target");
+    }
+  }
   nodeWrapper.appendChild(card);
 
   if (node.children && node.children.length > 0) {
@@ -1057,7 +1109,9 @@ function renderTreeNode(node, treeCodeIndex = new Map()) {
       });
     }
     node.children.forEach((child) => {
-      childrenWrapper.appendChild(renderTreeNode(child, treeCodeIndex));
+      childrenWrapper.appendChild(
+        renderTreeNode(child, treeCodeIndex, associatedRoleIndex)
+      );
     });
     branchWrapper.appendChild(childrenWrapper);
     nodeWrapper.appendChild(branchWrapper);
@@ -1218,7 +1272,10 @@ function renderTree() {
 
   treeStatus.textContent = "";
   const treeCodeIndex = collectTreeCodeIndex(tree);
-  treeContainer.appendChild(renderTreeNode(tree, treeCodeIndex));
+  const associatedRoleIndex = collectAssociatedRoleIndex(tree, treeCodeIndex);
+  treeContainer.appendChild(
+    renderTreeNode(tree, treeCodeIndex, associatedRoleIndex)
+  );
   renderTreeWarnings(tree);
 }
 
