@@ -30,8 +30,8 @@
               { "title": "Stretcher Bars", "nameCodes": ["ST100"] }
             ]
           },
-          { "title": "Crossing (S&C)", "nameCodes": ["AX200", "AX210"] },
-          { "title": "Point Heater", "nameCodes": ["CD100"], "ignoreFromErrors": true }
+          { "title": "Crossing (S&C)", "nameCodes": ["AX200", "AX210"] }
+  
         ]
       }
     },
