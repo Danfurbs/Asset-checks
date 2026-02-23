@@ -6,8 +6,8 @@
       "label": "Switches and Crossings",
       "associations": [
         {
-          "fromCodes": ["ST100"],
-          "toCodes": ["PO100"],
+          "fromCodes": [AP100"],
+          "toCodes": ["PO200", "PO210", "PO220", "PO230"],
           "bidirectional": true
         },
         {
