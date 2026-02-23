@@ -65,6 +65,7 @@ let referenceNameCodes = [];
 let referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set();
 let referenceChildMap = new Map();
+let referenceAssociatedMap = new Map();
 
 const COLUMN_ALIASES = {
   assetNumber: ["Asset Number", "Asset No", "Asset #"],
@@ -951,7 +952,67 @@ function createNodeCard(node) {
   return card;
 }
 
-function renderTreeNode(node) {
+function collectTreeCodeIndex(node, index = new Map(), visited = new Set()) {
+  if (!node) {
+    return index;
+  }
+  const nodeKey = `${node.assetNumber || "unknown"}-${node.placeholder ? "placeholder" : "asset"}-${node.missing ? "missing" : "active"}`;
+  if (visited.has(nodeKey)) {
+    return index;
+  }
+  visited.add(nodeKey);
+
+  if (!node.missing && !node.placeholder && node.assetNumber) {
+    const asset = assetMap.get(node.assetNumber);
+    const code = extractNameCode(asset?.itemNameCodeDesc);
+    if (code) {
+      if (!index.has(code)) {
+        index.set(code, []);
+      }
+      if (!index.get(code).includes(node.assetNumber)) {
+        index.get(code).push(node.assetNumber);
+      }
+    }
+  }
+
+  node.children?.forEach((child) => collectTreeCodeIndex(child, index, visited));
+  return index;
+}
+
+function getAssociatedTargets(node, treeCodeIndex) {
+  if (!node || node.missing || node.placeholder || !node.assetNumber) {
+    return [];
+  }
+
+  const asset = assetMap.get(node.assetNumber);
+  const nodeCode = extractNameCode(asset?.itemNameCodeDesc);
+  if (!nodeCode || !referenceAssociatedMap.has(nodeCode)) {
+    return [];
+  }
+
+  const directChildren = new Set(
+    (childrenMap.get(node.assetNumber) || []).filter(Boolean)
+  );
+  const associatedNumbers = new Set();
+  referenceAssociatedMap.get(nodeCode).forEach((targetCode) => {
+    (treeCodeIndex.get(targetCode) || []).forEach((targetAssetNumber) => {
+      if (targetAssetNumber === node.assetNumber) {
+        return;
+      }
+      if (directChildren.has(targetAssetNumber)) {
+        return;
+      }
+      associatedNumbers.add(targetAssetNumber);
+    });
+  });
+
+  return Array.from(associatedNumbers)
+    .map((assetNumber) => assetMap.get(assetNumber))
+    .filter(Boolean)
+    .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
+}
+
+function renderTreeNode(node, treeCodeIndex = new Map()) {
   const nodeWrapper = document.createElement("div");
   nodeWrapper.className = "tree-node";
 
@@ -996,10 +1057,38 @@ function renderTreeNode(node) {
       });
     }
     node.children.forEach((child) => {
-      childrenWrapper.appendChild(renderTreeNode(child));
+      childrenWrapper.appendChild(renderTreeNode(child, treeCodeIndex));
     });
     branchWrapper.appendChild(childrenWrapper);
     nodeWrapper.appendChild(branchWrapper);
+  }
+
+  const associatedTargets = getAssociatedTargets(node, treeCodeIndex);
+  if (associatedTargets.length) {
+    const associatedWrapper = document.createElement("div");
+    associatedWrapper.className = "tree-associated";
+
+    const label = document.createElement("div");
+    label.className = "tree-associated-label";
+    label.textContent = "Associated equipment";
+    associatedWrapper.appendChild(label);
+
+    const list = document.createElement("div");
+    list.className = "tree-associated-list";
+    associatedTargets.forEach((asset) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "tree-associated-chip";
+      chip.textContent = `${asset.assetNumber} · ${extractNameCode(asset.itemNameCodeDesc)}`;
+      chip.title = asset.assetDesc1 || asset.assetDesc2 || asset.itemNameCodeDesc;
+      chip.addEventListener("click", () => {
+        selectAsset(asset.assetNumber);
+      });
+      list.appendChild(chip);
+    });
+
+    associatedWrapper.appendChild(list);
+    nodeWrapper.appendChild(associatedWrapper);
   }
 
   return nodeWrapper;
@@ -1128,7 +1217,8 @@ function renderTree() {
   }
 
   treeStatus.textContent = "";
-  treeContainer.appendChild(renderTreeNode(tree));
+  const treeCodeIndex = collectTreeCodeIndex(tree);
+  treeContainer.appendChild(renderTreeNode(tree, treeCodeIndex));
   renderTreeWarnings(tree);
 }
 
@@ -1780,11 +1870,51 @@ function updateReferenceTree(tree) {
   referenceParentMap = buildReferenceParentMap(tree.root);
   referenceIgnoredCodes = collectIgnoredNameCodes(tree.root);
   referenceChildMap = buildReferenceChildMap(tree.root);
+  referenceAssociatedMap = buildReferenceAssociatedMap(tree.associations || []);
   captureInitialMismatches();
   renderAssetList();
   if (selectedAssetNumber) {
     renderTree();
   }
+}
+
+function buildReferenceAssociatedMap(associations) {
+  const map = new Map();
+  if (!Array.isArray(associations)) {
+    return map;
+  }
+
+  associations.forEach((link) => {
+    const fromCodes = Array.isArray(link?.fromCodes)
+      ? link.fromCodes.map((code) => String(code).toUpperCase())
+      : [];
+    const toCodes = Array.isArray(link?.toCodes)
+      ? link.toCodes.map((code) => String(code).toUpperCase())
+      : [];
+    const bidirectional = link?.bidirectional !== false;
+
+    fromCodes.forEach((fromCode) => {
+      if (!map.has(fromCode)) {
+        map.set(fromCode, new Set());
+      }
+      toCodes.forEach((toCode) => {
+        map.get(fromCode).add(toCode);
+      });
+    });
+
+    if (bidirectional) {
+      toCodes.forEach((toCode) => {
+        if (!map.has(toCode)) {
+          map.set(toCode, new Set());
+        }
+        fromCodes.forEach((fromCode) => {
+          map.get(toCode).add(fromCode);
+        });
+      });
+    }
+  });
+
+  return map;
 }
 
 function renderReferenceNode(node) {
