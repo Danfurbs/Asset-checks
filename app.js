@@ -19,10 +19,22 @@ const treeWarningsList = document.getElementById("treeWarningsList");
 const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
-const treeViewSelect = document.getElementById("treeViewSelect");
 const treeLevelsInput = document.getElementById("treeLevelsInput");
 const treeLevelsWrapper = document.getElementById("treeLevelsWrapper");
 const showAssociatedToggle = document.getElementById("showAssociatedToggle");
+const warningsOnlyToggle = document.getElementById("warningsOnlyToggle");
+const viewModeToggle = document.getElementById("viewModeToggle");
+const treeSearchInput = document.getElementById("treeSearchInput");
+const assetSearchOptions = document.getElementById("assetSearchOptions");
+const fitToViewButton = document.getElementById("fitToViewButton");
+const centerSelectionButton = document.getElementById("centerSelectionButton");
+const historyBackButton = document.getElementById("historyBackButton");
+const historyForwardButton = document.getElementById("historyForwardButton");
+const hierarchySummary = document.getElementById("hierarchySummary");
+const associationsPanel = document.getElementById("associationsPanel");
+const associationsSearch = document.getElementById("associationsSearch");
+const associationTypeChips = document.getElementById("associationTypeChips");
+const treeBreadcrumbs = document.getElementById("treeBreadcrumbs");
 const exportButton = document.getElementById("exportButton");
 const parentSelectModal = document.getElementById("parentSelectModal");
 const parentSelectList = document.getElementById("parentSelectList");
@@ -54,9 +66,16 @@ let initialMismatchAssets = new Set();
 let placeholderAssets = [];
 let placeholderMap = new Map();
 let placeholderCounter = 0;
-let treeViewMode = "all";
-let treeLevelsAbove = 2;
-let showAssociatedEquipment = true;
+let viewMode = "hierarchy";
+let treeLevelsAbove = 1;
+let showAssociatedEquipment = false;
+let warningsOnlyMode = false;
+let associationTypeFilter = new Set();
+let pinnedAssociatedAssets = new Set();
+let selectionHistory = [];
+let selectionHistoryIndex = -1;
+let expandedChildrenParents = new Set();
+let expandedSiblingParents = new Set();
 let existingAssetCandidates = [];
 let existingAssetTargetParentNumber = null;
 let orphanParentCandidates = [];
@@ -725,53 +744,35 @@ function buildTreeForView(assetNumber) {
     return null;
   }
 
-  if (treeViewMode === "below") {
-    return buildSubtree(assetNumber);
+  // Declutter rule: always render selected ancestor chain + selected children (+depth).
+  const chain = buildAncestorChain(assetNumber);
+  const levels = Math.max(1, Math.min(10, treeLevelsAbove || 1));
+  const childFilter = viewMode === "swimlane" ? isAssetInReferenceTree : null;
+  const subtree = buildSubtree(assetNumber, new Set(), childFilter);
+  const selectedNode = pruneChildrenDepth(subtree, levels);
+
+  if (viewMode === "focus") {
+    return linkAncestorChain(chain.slice(0, -1), selectedNode);
   }
 
-  if (treeViewMode === "selected") {
-    return buildAssetNode(assetNumber);
+  if (viewMode === "swimlane") {
+    return linkAncestorChain(chain.slice(0, -1), selectedNode);
   }
 
-  if (treeViewMode === "ancestors") {
-    const chain = buildAncestorChain(assetNumber);
-    return linkAncestorChain(chain, null);
-  }
+  return linkAncestorChain(chain.slice(0, -1), selectedNode);
+}
 
-  if (treeViewMode === "branch") {
-    const chain = buildAncestorChain(assetNumber);
-    const subtree = buildSubtree(assetNumber);
-    if (!chain.length) {
-      return subtree;
-    }
-    const chainWithoutSelected = chain.slice(0, -1);
-    return linkAncestorChain(chainWithoutSelected, subtree);
+function pruneChildrenDepth(node, depth) {
+  if (!node) {
+    return null;
   }
-
-  if (treeViewMode === "levels") {
-    const chain = buildAncestorChain(assetNumber);
-    if (!chain.length) {
-      return buildSubtree(assetNumber);
-    }
-    const levels = Math.max(1, Math.min(10, treeLevelsAbove || 1));
-    const startIndex = Math.max(0, chain.length - (levels + 1));
-    const limitedChain = chain.slice(startIndex, -1);
-    const subtree = buildSubtree(assetNumber);
-    return linkAncestorChain(limitedChain, subtree);
+  if (depth <= 0 || !node.children?.length) {
+    return { ...node, children: [] };
   }
-
-  if (treeViewMode === "all") {
-    const selectedAsset = assetMap.get(assetNumber);
-    const selectedCode = extractNameCode(selectedAsset?.itemNameCodeDesc);
-    const shouldLimitToReferenceTree =
-      selectedCode && isNameCodeInReferenceTree(selectedCode);
-    return buildFamilyTree(
-      assetNumber,
-      shouldLimitToReferenceTree ? isAssetInReferenceTree : null
-    );
-  }
-
-  return buildFamilyTree(assetNumber);
+  return {
+    ...node,
+    children: node.children.map((child) => pruneChildrenDepth(child, depth - 1)),
+  };
 }
 
 function createNodeCard(node) {
@@ -893,26 +894,43 @@ function createNodeCard(node) {
   const desc = node.assetDesc1 || node.assetDesc2 || "";
   const itemNameCodeDesc = node.itemNameCodeDesc || "";
   const assetNumber = node.assetNumber || "";
-  const normalizedAssetNumber = assetNumber.toString().padStart(12, "0");
-  const assetLink = document.createElement("a");
-  assetLink.href = `http://ellipse-ell9p.unix.ukrail.net/html/ui?&application=mse600&type=read&equipmentNo=${normalizedAssetNumber}`;
-  assetLink.textContent = assetNumber;
-  assetLink.target = "_blank";
-  assetLink.rel = "noopener noreferrer";
-  card.appendChild(assetLink);
-  assetLink.addEventListener("click", (event) => {
-    event.stopPropagation();
-  });
-  if (desc) {
-    const small = document.createElement("small");
-    small.textContent = desc;
-    card.appendChild(small);
+  const typeCode = extractNameCode(itemNameCodeDesc);
+  const assetRecordForLayout = assetMap.get(node.assetNumber);
+
+  // Visual grammar: top=ID, middle=name+type badge, bottom=location/status/warnings.
+  const top = document.createElement("div");
+  top.className = "node-top-id";
+  top.textContent = assetNumber;
+  card.appendChild(top);
+
+  const middle = document.createElement("div");
+  middle.className = "node-middle";
+  const name = document.createElement("div");
+  name.className = "node-name";
+  name.textContent = desc || itemNameCodeDesc || "Unnamed asset";
+  middle.appendChild(name);
+  const badge = document.createElement("span");
+  badge.className = "node-type-badge";
+  badge.textContent = typeCode || "N/A";
+  middle.appendChild(badge);
+  card.appendChild(middle);
+
+  const bottom = document.createElement("div");
+  bottom.className = "node-bottom";
+  const location = document.createElement("span");
+  location.textContent = assetRecordForLayout?.elr || "No location";
+  const status = document.createElement("span");
+  status.className = "node-status-pill";
+  status.textContent = assetRecordForLayout?.assetStatus || "Unknown";
+  bottom.appendChild(location);
+  bottom.appendChild(status);
+  if (assetRecordForLayout && getMissingReferenceChildren(assetRecordForLayout).length) {
+    const warn = document.createElement("span");
+    warn.className = "node-inline-warning";
+    warn.textContent = "!";
+    bottom.appendChild(warn);
   }
-  if (itemNameCodeDesc) {
-    const small = document.createElement("small");
-    small.textContent = itemNameCodeDesc;
-    card.appendChild(small);
-  }
+  card.appendChild(bottom);
   card.addEventListener("click", () => {
     selectAsset(node.assetNumber);
   });
@@ -1057,11 +1075,42 @@ function collectAssociatedRoleIndex(
   return index;
 }
 
+
+
+function getVisibleChildren(node) {
+  const children = node.children || [];
+  const maxChildren = 6;
+  if (expandedChildrenParents.has(node.assetNumber) || children.length <= maxChildren) {
+    return { list: children, remaining: 0 };
+  }
+  return { list: children.slice(0, maxChildren), remaining: children.length - maxChildren };
+}
+
+function getSiblingCount(assetNumber) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset?.parentAssetNumber) {
+    return 0;
+  }
+  const siblings = (childrenMap.get(asset.parentAssetNumber) || []).filter((value) => value !== assetNumber);
+  return siblings.length;
+}
+
+function getSiblingNodes(assetNumber) {
+  const asset = assetMap.get(assetNumber);
+  if (!asset?.parentAssetNumber) {
+    return [];
+  }
+  return (childrenMap.get(asset.parentAssetNumber) || [])
+    .filter((value) => value !== assetNumber)
+    .map((siblingNumber) => buildAssetNode(siblingNumber));
+}
+
 function renderTreeNode(
   node,
   treeCodeIndex = new Map(),
   associatedRoleIndex = new Map(),
-  showAssociated = true
+  showAssociated = true,
+  options = {}
 ) {
   const nodeWrapper = document.createElement("div");
   nodeWrapper.className = "tree-node";
@@ -1077,6 +1126,35 @@ function renderTreeNode(
     }
   }
   nodeWrapper.appendChild(card);
+
+  if (!node.missing && !node.placeholder && node.assetNumber === selectedAssetNumber && options.showSiblingPill) {
+    const siblingCount = getSiblingCount(node.assetNumber);
+    if (siblingCount > 0) {
+      const siblingPill = document.createElement("button");
+      siblingPill.type = "button";
+      siblingPill.className = "siblings-pill";
+      const expanded = expandedSiblingParents.has(node.assetNumber);
+      siblingPill.textContent = expanded ? `Hide siblings (${siblingCount})` : `Siblings (${siblingCount})`;
+      siblingPill.addEventListener("click", () => {
+        if (expandedSiblingParents.has(node.assetNumber)) {
+          expandedSiblingParents.delete(node.assetNumber);
+        } else {
+          expandedSiblingParents.add(node.assetNumber);
+        }
+        renderTree();
+      });
+      nodeWrapper.appendChild(siblingPill);
+
+      if (expanded) {
+        const siblingList = document.createElement("div");
+        siblingList.className = "sibling-list";
+        getSiblingNodes(node.assetNumber).forEach((siblingNode) => {
+          siblingList.appendChild(renderTreeNode(siblingNode, treeCodeIndex, associatedRoleIndex, showAssociated));
+        });
+        nodeWrapper.appendChild(siblingList);
+      }
+    }
+  }
 
   if (node.children && node.children.length > 0) {
     const branchWrapper = document.createElement("div");
@@ -1115,11 +1193,24 @@ function renderTreeNode(
         updateAssetParent(assetNumber, candidates[0]);
       });
     }
-    node.children.forEach((child) => {
+
+    const visibleChildren = getVisibleChildren(node);
+    visibleChildren.list.forEach((child) => {
       childrenWrapper.appendChild(
-        renderTreeNode(child, treeCodeIndex, associatedRoleIndex, showAssociated)
+        renderTreeNode(child, treeCodeIndex, associatedRoleIndex, showAssociated, options)
       );
     });
+    if (visibleChildren.remaining > 0) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "children-more-pill";
+      more.textContent = `+${visibleChildren.remaining} more`;
+      more.addEventListener("click", () => {
+        expandedChildrenParents.add(node.assetNumber);
+        renderTree();
+      });
+      childrenWrapper.appendChild(more);
+    }
     branchWrapper.appendChild(childrenWrapper);
     nodeWrapper.appendChild(branchWrapper);
   }
@@ -1155,6 +1246,89 @@ function renderTreeNode(
   }
 
   return nodeWrapper;
+}
+
+function collectDescendantsByLevel(rootNode, maxDepth = 2) {
+  const levels = [];
+  const queue = [{ node: rootNode, depth: 0 }];
+  while (queue.length) {
+    const current = queue.shift();
+    if (!levels[current.depth]) {
+      levels[current.depth] = [];
+    }
+    levels[current.depth].push(current.node);
+    if (current.depth >= maxDepth) {
+      continue;
+    }
+    (current.node.children || []).forEach((child) => queue.push({ node: child, depth: current.depth + 1 }));
+  }
+  return levels;
+}
+
+function renderFocusMode(tree, treeCodeIndex, associatedRoleIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "focus-layout";
+  const chain = buildAncestorChain(selectedAssetNumber);
+
+  const spine = document.createElement("div");
+  spine.className = "focus-spine";
+  chain.forEach((node) => {
+    spine.appendChild(renderTreeNode(node, treeCodeIndex, associatedRoleIndex, false));
+  });
+  wrapper.appendChild(spine);
+
+  const selectedBranch = buildSubtree(selectedAssetNumber, new Set());
+  const focusChildren = document.createElement("div");
+  focusChildren.className = "focus-children-grid";
+  (selectedBranch?.children || []).slice(0, 12).forEach((child) => {
+    focusChildren.appendChild(renderTreeNode(child, treeCodeIndex, associatedRoleIndex, showAssociatedEquipment));
+  });
+  wrapper.appendChild(focusChildren);
+  return wrapper;
+}
+
+function getTypeLabelForNode(node) {
+  if (!node || node.missing || node.placeholder) {
+    return "Unknown";
+  }
+  const record = assetMap.get(node.assetNumber);
+  const code = extractNameCode(record?.itemNameCodeDesc);
+  return code || "Unknown";
+}
+
+function renderSwimlaneMode(tree, treeCodeIndex, associatedRoleIndex) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "swimlane-layout";
+  const levels = collectDescendantsByLevel(tree, treeLevelsAbove + 1);
+
+  levels.forEach((nodes, depth) => {
+    const laneMap = new Map();
+    nodes.forEach((node) => {
+      const laneKey = getTypeLabelForNode(node);
+      if (!laneMap.has(laneKey)) {
+        laneMap.set(laneKey, []);
+      }
+      laneMap.get(laneKey).push(node);
+    });
+
+    laneMap.forEach((laneNodes, laneLabel) => {
+      const lane = document.createElement("div");
+      lane.className = "swimlane-row";
+      const laneTitle = document.createElement("div");
+      laneTitle.className = "swimlane-title";
+      laneTitle.textContent = `${laneLabel} · depth ${depth}`;
+      lane.appendChild(laneTitle);
+
+      const laneCards = document.createElement("div");
+      laneCards.className = "swimlane-cards";
+      laneNodes.forEach((node) => {
+        laneCards.appendChild(renderTreeNode(node, treeCodeIndex, associatedRoleIndex, showAssociatedEquipment));
+      });
+      lane.appendChild(laneCards);
+      wrapper.appendChild(lane);
+    });
+  });
+  return wrapper;
 }
 
 function collectTreeWarnings(node, warnings = [], visited = new Set()) {
@@ -1227,7 +1401,10 @@ function renderTreeWarnings(tree) {
     return;
   }
 
-  const warnings = collectTreeWarnings(tree);
+  let warnings = collectTreeWarnings(tree);
+  if (warningsOnlyMode) {
+    warnings = warnings.filter((warning) => warning.type !== "missing");
+  }
   treeWarningsList.innerHTML = "";
   if (!warnings.length) {
     treeWarningsStatus.textContent = "No warnings for this tree.";
@@ -1263,12 +1440,161 @@ function renderTreeWarnings(tree) {
   });
 }
 
+function renderBreadcrumbs() {
+  if (!treeBreadcrumbs) {
+    return;
+  }
+  treeBreadcrumbs.innerHTML = "";
+  if (!selectedAssetNumber) {
+    return;
+  }
+  buildAncestorChain(selectedAssetNumber).forEach((node, index, chain) => {
+    const crumb = document.createElement("button");
+    crumb.type = "button";
+    crumb.className = "breadcrumb-item";
+    crumb.textContent = node.assetNumber;
+    crumb.addEventListener("click", () => selectAsset(node.assetNumber));
+    treeBreadcrumbs.appendChild(crumb);
+    if (index < chain.length - 1) {
+      const sep = document.createElement("span");
+      sep.textContent = "›";
+      treeBreadcrumbs.appendChild(sep);
+    }
+  });
+}
+
+function updateHierarchySummary() {
+  if (!hierarchySummary || !selectedAssetNumber) {
+    return;
+  }
+  const asset = assetMap.get(selectedAssetNumber);
+  const parents = buildAncestorChain(selectedAssetNumber).length - 1;
+  const children = (childrenMap.get(selectedAssetNumber) || []).length;
+  const siblings = asset?.parentAssetNumber ? (childrenMap.get(asset.parentAssetNumber) || []).filter((id) => id !== selectedAssetNumber).length : 0;
+  hierarchySummary.textContent = `Parents: ${parents} · Children: ${children} · Siblings: ${siblings}`;
+}
+
+function buildAssociationGroups(associations) {
+  const groups = new Map();
+  associations.forEach((asset) => {
+    const type = extractNameCode(asset.itemNameCodeDesc) || "Unknown";
+    if (!groups.has(type)) {
+      groups.set(type, []);
+    }
+    groups.get(type).push(asset);
+  });
+  return groups;
+}
+
+function renderAssociationTypeChips(groups) {
+  if (!associationTypeChips) {
+    return;
+  }
+  associationTypeChips.innerHTML = "";
+  if (!groups.size) {
+    return;
+  }
+
+  const allChip = document.createElement("button");
+  allChip.type = "button";
+  allChip.className = `assoc-chip ${associationTypeFilter.size === 0 ? "active" : ""}`;
+  allChip.textContent = "All association types";
+  allChip.addEventListener("click", () => {
+    associationTypeFilter = new Set();
+    renderTree();
+  });
+  associationTypeChips.appendChild(allChip);
+
+  Array.from(groups.keys()).sort((a, b) => a.localeCompare(b)).forEach((type) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    const isActive = associationTypeFilter.size > 0 && associationTypeFilter.has(type);
+    chip.className = `assoc-chip ${isActive ? "active" : ""}`;
+    chip.textContent = `${type} (${groups.get(type).length})`;
+    chip.addEventListener("click", () => {
+      if (associationTypeFilter.has(type)) {
+        associationTypeFilter.delete(type);
+      } else {
+        associationTypeFilter.add(type);
+      }
+      renderTree();
+    });
+    associationTypeChips.appendChild(chip);
+  });
+}
+
+function renderAssociationsPanel(treeCodeIndex) {
+  if (!associationsPanel) return;
+  associationsPanel.innerHTML = "";
+  if (!selectedAssetNumber) return;
+
+  const node = buildAssetNode(selectedAssetNumber);
+  let associations = getAssociatedTargets(node, treeCodeIndex);
+  const term = (associationsSearch?.value || "").toLowerCase();
+  if (term) {
+    associations = associations.filter((asset) => {
+      const haystack = `${asset.assetNumber} ${asset.assetDesc1 || ""} ${asset.itemNameCodeDesc || ""}`.toLowerCase();
+      return haystack.includes(term);
+    });
+  }
+
+  const grouped = buildAssociationGroups(associations);
+  renderAssociationTypeChips(grouped);
+
+  const filteredTypes = associationTypeFilter.size
+    ? new Set(Array.from(associationTypeFilter))
+    : null;
+
+  Array.from(grouped.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .forEach(([type, assetsByType]) => {
+      if (filteredTypes && !filteredTypes.has(type)) {
+        return;
+      }
+
+      const group = document.createElement("section");
+      group.className = "association-group";
+      const title = document.createElement("h4");
+      title.textContent = `${type} (${assetsByType.length})`;
+      group.appendChild(title);
+
+      assetsByType.forEach((asset) => {
+        const row = document.createElement("div");
+        row.className = "association-row";
+        row.innerHTML = `<strong>${asset.assetNumber}</strong><span>${asset.assetDesc1 || asset.itemNameCodeDesc || ""}</span>`;
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        const pinned = pinnedAssociatedAssets.has(asset.assetNumber);
+        toggle.textContent = pinned ? "Hide" : "Show on canvas";
+        toggle.addEventListener("click", (event) => {
+          event.stopPropagation();
+          if (pinnedAssociatedAssets.has(asset.assetNumber)) pinnedAssociatedAssets.delete(asset.assetNumber);
+          else pinnedAssociatedAssets.add(asset.assetNumber);
+          renderTree();
+        });
+
+        row.appendChild(toggle);
+        row.addEventListener("mouseenter", () => {
+          row.classList.add("hover-preview");
+        });
+        row.addEventListener("mouseleave", () => {
+          row.classList.remove("hover-preview");
+        });
+        row.addEventListener("click", () => selectAsset(asset.assetNumber));
+        group.appendChild(row);
+      });
+      associationsPanel.appendChild(group);
+    });
+}
+
 function renderTree() {
   treeContainer.innerHTML = "";
 
   if (!selectedAssetNumber) {
     treeStatus.textContent = "Select an asset to view its family tree.";
     resetTreeWarnings("Select an asset to see warnings for the family tree.");
+    renderBreadcrumbs();
     return;
   }
 
@@ -1284,25 +1610,43 @@ function renderTree() {
   const associatedRoleIndex = showAssociatedEquipment
     ? collectAssociatedRoleIndex(tree, treeCodeIndex)
     : new Map();
-  treeContainer.appendChild(
-    renderTreeNode(
+
+  // View modes share selection + data model but render distinct layouts.
+  let renderedTree;
+  if (viewMode === "focus") {
+    renderedTree = renderFocusMode(tree, treeCodeIndex, associatedRoleIndex);
+  } else if (viewMode === "swimlane") {
+    renderedTree = renderSwimlaneMode(tree, treeCodeIndex, associatedRoleIndex);
+  } else {
+    renderedTree = renderTreeNode(
       tree,
       treeCodeIndex,
       associatedRoleIndex,
-      showAssociatedEquipment
-    )
-  );
+      showAssociatedEquipment,
+      { showSiblingPill: true }
+    );
+  }
+  treeContainer.appendChild(renderedTree);
+
+  pinnedAssociatedAssets.forEach((assetNumber) => {
+    const asset = assetMap.get(assetNumber);
+    if (!asset) return;
+    const chip = document.createElement("div");
+    chip.className = "pinned-associated-card";
+    chip.textContent = `${asset.assetNumber} · ${extractNameCode(asset.itemNameCodeDesc)}`;
+    chip.addEventListener("click", () => selectAsset(asset.assetNumber));
+    treeContainer.appendChild(chip);
+  });
+
+  renderBreadcrumbs();
+  updateHierarchySummary();
+  renderAssociationsPanel(treeCodeIndex);
   renderTreeWarnings(tree);
 }
 
 function updateTreeViewControls() {
   if (!treeLevelsWrapper || !treeLevelsInput) {
     return;
-  }
-  if (treeViewMode === "levels") {
-    treeLevelsWrapper.style.display = "flex";
-  } else {
-    treeLevelsWrapper.style.display = "none";
   }
   treeLevelsInput.value = treeLevelsAbove;
 }
@@ -1882,10 +2226,25 @@ function selectAsset(assetNumber) {
   }
   if (assetNumber !== selectedAssetNumber) {
     selectedAssetNumber = assetNumber;
+    if (selectionHistory[selectionHistoryIndex] !== assetNumber) {
+      selectionHistory = selectionHistory.slice(0, selectionHistoryIndex + 1);
+      selectionHistory.push(assetNumber);
+      selectionHistoryIndex = selectionHistory.length - 1;
+    }
     renderAssetList();
   }
   updateAssetDetails();
   renderTree();
+}
+
+function populateSearchOptions() {
+  if (!assetSearchOptions) return;
+  assetSearchOptions.innerHTML = "";
+  assets.slice(0, 1000).forEach((asset) => {
+    const option = document.createElement("option");
+    option.value = `${asset.assetNumber} ${asset.assetDesc1 || ""}`.trim();
+    assetSearchOptions.appendChild(option);
+  });
 }
 
 function loadReferenceTrees() {
@@ -2209,6 +2568,7 @@ function handleFile(file) {
     captureInitialMismatches();
     updateExportButton();
     selectedAssetNumber = assets[0]?.assetNumber || null;
+    populateSearchOptions();
     renderAssetList();
     updateAssetDetails();
     renderTree();
@@ -2431,15 +2791,6 @@ referenceTreeSelect.addEventListener("change", (event) => {
   }
 });
 
-if (treeViewSelect) {
-  treeViewMode = treeViewSelect.value;
-  treeViewSelect.addEventListener("change", (event) => {
-    treeViewMode = event.target.value;
-    updateTreeViewControls();
-    renderTree();
-  });
-}
-
 if (treeLevelsInput) {
   treeLevelsInput.addEventListener("input", (event) => {
     const value = Number.parseInt(event.target.value, 10);
@@ -2458,6 +2809,93 @@ if (showAssociatedToggle) {
     renderTree();
   });
 }
+
+
+
+if (viewModeToggle) {
+  viewModeToggle.addEventListener("click", (event) => {
+    const button = event.target.closest(".view-mode-button");
+    if (!button) {
+      return;
+    }
+    viewMode = button.dataset.mode || "hierarchy";
+    viewModeToggle.querySelectorAll(".view-mode-button").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
+    renderTree();
+  });
+}
+
+if (treeSearchInput) {
+  treeSearchInput.addEventListener("change", () => {
+    const value = treeSearchInput.value.trim();
+    const match = assets.find((asset) =>
+      `${asset.assetNumber} ${asset.assetDesc1 || ""} ${asset.itemNameCodeDesc || ""}`
+        .toLowerCase()
+        .includes(value.toLowerCase())
+    );
+    if (match) {
+      selectAsset(match.assetNumber);
+      centerSelectionButton?.click();
+    }
+  });
+}
+
+if (warningsOnlyToggle) {
+  warningsOnlyToggle.addEventListener("change", (event) => {
+    warningsOnlyMode = event.target.checked;
+    renderTree();
+  });
+}
+
+if (fitToViewButton) {
+  fitToViewButton.addEventListener("click", () => {
+    treeContainer.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  });
+}
+
+if (centerSelectionButton) {
+  centerSelectionButton.addEventListener("click", () => {
+    const selected = treeContainer.querySelector(".node-card.selected");
+    selected?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  });
+}
+
+if (historyBackButton) {
+  historyBackButton.addEventListener("click", () => {
+    if (selectionHistoryIndex <= 0) return;
+    selectionHistoryIndex -= 1;
+    selectedAssetNumber = selectionHistory[selectionHistoryIndex];
+    renderAssetList();
+    updateAssetDetails();
+    renderTree();
+  });
+}
+
+if (historyForwardButton) {
+  historyForwardButton.addEventListener("click", () => {
+    if (selectionHistoryIndex >= selectionHistory.length - 1) return;
+    selectionHistoryIndex += 1;
+    selectedAssetNumber = selectionHistory[selectionHistoryIndex];
+    renderAssetList();
+    updateAssetDetails();
+    renderTree();
+  });
+}
+
+if (associationsSearch) {
+  associationsSearch.addEventListener("input", () => renderTree());
+}
+
+document.querySelectorAll(".right-tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    const key = tab.dataset.panelTab;
+    document.querySelectorAll(".right-tab").forEach((btn) => btn.classList.toggle("active", btn === tab));
+    document.querySelectorAll(".right-panel-section").forEach((section) => {
+      section.classList.toggle("hidden", section.dataset.panelSection !== key);
+    });
+  });
+});
 
 updateTreeViewControls();
 loadReferenceTrees();

@@ -74,49 +74,66 @@
 
       <section class="panel panel-right">
         <div class="panel-header">
-          <h2>Family Tree</h2>
-          <div class="legend">
-            <span class="legend-item"><span class="legend-box"></span>Active</span>
-            <span class="legend-item"><span class="legend-box legend-missing"></span>Asset not in download</span>
-            <span class="legend-item"><span class="legend-box legend-obsolete"></span>Obsolete record</span>
-            <span class="legend-item">
-              <span class="legend-box legend-orphaned"></span>Orphaned (parent obsolete)
-            </span>
-            <span class="legend-item"><span class="legend-warning">!</span>Missing expected child</span>
-          </div>
+          <h2>AssetViewerShell</h2>
         </div>
         <div class="tree-layout">
           <div class="tree-panel">
-            <div class="tree-controls" aria-label="Tree view options">
-              <div class="tree-view-control">
-                <label for="treeViewSelect">Tree view</label>
-                <select id="treeViewSelect">
-                  <option value="all">Show all</option>
-                  <option value="below">Show assets below</option>
-                  <option value="branch">Show only this branch</option>
-                  <option value="ancestors">Show ancestors only</option>
-                  <option value="levels">Show levels above</option>
-                  <option value="selected">Show selected only</option>
-                </select>
+            <div class="viewer-toolbar" aria-label="Asset relationship viewer toolbar">
+              <div class="toolbar-row">
+                <div class="tree-view-control">
+                  <label for="referenceTreeSelect">TreeTypeSelector</label>
+                  <select id="referenceTreeSelect" aria-label="Select relationship tree">
+                    <option>Switches and Crossings</option>
+                  </select>
+                </div>
+                <div class="tree-view-control">
+                  <label>ViewModeToggle</label>
+                  <div class="view-mode-toggle" id="viewModeToggle" role="tablist" aria-label="View mode">
+                    <button type="button" class="view-mode-button active" data-mode="hierarchy">Hierarchy</button>
+                    <button type="button" class="view-mode-button" data-mode="focus">Focus</button>
+                    <button type="button" class="view-mode-button" data-mode="swimlane">Swimlane</button>
+                  </div>
+                </div>
+                <div class="tree-view-control tree-search-control">
+                  <label for="treeSearchInput">Search</label>
+                  <input type="search" id="treeSearchInput" list="assetSearchOptions" placeholder="Search id/name/type" />
+                  <datalist id="assetSearchOptions"></datalist>
+                </div>
               </div>
-              <div class="tree-view-control tree-view-levels" id="treeLevelsWrapper">
-                <label for="treeLevelsInput">Levels above</label>
-                <input
-                  type="number"
-                  id="treeLevelsInput"
-                  min="1"
-                  max="10"
-                  value="2"
-                  step="1"
-                />
+              <div class="toolbar-row">
+                <div class="tree-view-control" id="treeLevelsWrapper">
+                  <label for="treeLevelsInput">Depth</label>
+                  <input type="number" id="treeLevelsInput" min="1" max="10" value="1" step="1" />
+                </div>
+                <div class="toolbar-actions">
+                  <button type="button" id="fitToViewButton">Fit to view</button>
+                  <button type="button" id="centerSelectionButton">Center on selection</button>
+                  <button type="button" id="historyBackButton">Back</button>
+                  <button type="button" id="historyForwardButton">Forward</button>
+                </div>
+                <div class="tree-filter-set">
+                  <label class="tree-associated-toggle" for="showAssociatedToggle">
+                    <input type="checkbox" id="showAssociatedToggle" />
+                    Show associations
+                  </label>
+                  <label class="tree-associated-toggle" for="warningsOnlyToggle">
+                    <input type="checkbox" id="warningsOnlyToggle" />
+                    Warnings only
+                  </label>
+                </div>
               </div>
-              <label class="tree-associated-toggle" for="showAssociatedToggle">
-                <input type="checkbox" id="showAssociatedToggle" checked />
-                Show associated equipment
-              </label>
+              <div class="assoc-chip-row" id="associationTypeChips"></div>
             </div>
+
             <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
-            <div id="treeContainer" class="tree-container"></div>
+            <div class="breadcrumbs" id="treeBreadcrumbs"></div>
+            <div class="canvas-legend">
+              <span class="legend-item"><span class="legend-line legend-line-hierarchy"></span>Hierarchy edge</span>
+              <span class="legend-item"><span class="legend-line legend-line-association"></span>Association edge</span>
+              <span class="legend-item"><span class="legend-warning">!</span>Warnings</span>
+            </div>
+            <div id="treeContainer" class="tree-container graph-canvas"></div>
+            <div class="canvas-minimap" id="canvasMinimap">Minimap</div>
             <div class="tree-warnings" aria-live="polite">
               <div class="tree-warnings-header">
                 <h3>Tree warnings</h3>
@@ -128,37 +145,50 @@
               <ul id="treeWarningsList" class="tree-warnings-list"></ul>
             </div>
           </div>
-          <aside class="reference-panel" aria-label="Relationship reference trees">
-            <div class="reference-header">
-              <div>
-                <h3>Reference Tree</h3>
-                <p>Select relationship tree</p>
-              </div>
-              <select id="referenceTreeSelect" aria-label="Select relationship tree">
-                <option>Switches and Crossings</option>
-              </select>
+          <aside class="reference-panel" aria-label="Right side panel">
+            <div class="right-panel-tabs">
+              <button type="button" class="right-tab active" data-panel-tab="hierarchy">Hierarchy</button>
+              <button type="button" class="right-tab" data-panel-tab="associations">Associations</button>
+              <button type="button" class="right-tab" data-panel-tab="details">Details</button>
             </div>
-            <details class="reference-details" open>
-              <summary>Reference tree structure</summary>
-              <div class="reference-details-body">
-                <p class="reference-note">
-                  Nodes are defined using <strong>Item Name Code &amp; Desc</strong> values.
-                </p>
-                <div id="referenceTreeStatus" class="reference-status">
-                  Loading reference tree…
+            <section class="right-panel-section" data-panel-section="hierarchy">
+              <div class="reference-header">
+                <div>
+                  <h3>Hierarchy Summary</h3>
+                  <p id="hierarchySummary">Select an asset to view hierarchy counts.</p>
                 </div>
-                <ul id="referenceTree" class="reference-tree"></ul>
               </div>
-            </details>
-            <details class="asset-details" id="assetDetailsPanel" open>
-              <summary>Asset details</summary>
-              <div class="asset-details-body">
-                <p class="asset-details-empty" id="assetDetailsEmpty">
-                  Upload a file to load asset details.
-                </p>
-                <dl id="assetDetailsList" class="asset-details-list"></dl>
+              <details class="reference-details" open>
+                <summary>Reference tree structure</summary>
+                <div class="reference-details-body">
+                  <p class="reference-note">
+                    Nodes are defined using <strong>Item Name Code &amp; Desc</strong> values.
+                  </p>
+                  <div id="referenceTreeStatus" class="reference-status">
+                    Loading reference tree…
+                  </div>
+                  <ul id="referenceTree" class="reference-tree"></ul>
+                </div>
+              </details>
+            </section>
+            <section class="right-panel-section hidden" data-panel-section="associations">
+              <div class="associations-panel-header">
+                <h3>AssociationsPanel</h3>
+                <input id="associationsSearch" type="search" placeholder="Search associations" />
               </div>
-            </details>
+              <div id="associationsPanel" class="associations-panel-list"></div>
+            </section>
+            <section class="right-panel-section hidden" data-panel-section="details">
+              <details class="asset-details" id="assetDetailsPanel" open>
+                <summary>AssetDetailsPanel</summary>
+                <div class="asset-details-body">
+                  <p class="asset-details-empty" id="assetDetailsEmpty">
+                    Upload a file to load asset details.
+                  </p>
+                  <dl id="assetDetailsList" class="asset-details-list"></dl>
+                </div>
+              </details>
+            </section>
           </aside>
         </div>
       </section>
