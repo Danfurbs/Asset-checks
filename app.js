@@ -19,17 +19,8 @@ const treeWarningsList = document.getElementById("treeWarningsList");
 const referenceTreeSelect = document.getElementById("referenceTreeSelect");
 const referenceTreeStatus = document.getElementById("referenceTreeStatus");
 const referenceTree = document.getElementById("referenceTree");
-const treeLevelsInput = document.getElementById("treeLevelsInput");
-const treeLevelsWrapper = document.getElementById("treeLevelsWrapper");
-const showAssociatedToggle = document.getElementById("showAssociatedToggle");
-const warningsOnlyToggle = document.getElementById("warningsOnlyToggle");
-const viewModeToggle = document.getElementById("viewModeToggle");
 const treeSearchInput = document.getElementById("treeSearchInput");
 const assetSearchOptions = document.getElementById("assetSearchOptions");
-const fitToViewButton = document.getElementById("fitToViewButton");
-const centerSelectionButton = document.getElementById("centerSelectionButton");
-const historyBackButton = document.getElementById("historyBackButton");
-const historyForwardButton = document.getElementById("historyForwardButton");
 const hierarchySummary = document.getElementById("hierarchySummary");
 const associationsPanel = document.getElementById("associationsPanel");
 const associationsSearch = document.getElementById("associationsSearch");
@@ -66,9 +57,8 @@ let initialMismatchAssets = new Set();
 let placeholderAssets = [];
 let placeholderMap = new Map();
 let placeholderCounter = 0;
-let viewMode = "hierarchy";
-let treeLevelsAbove = 1;
 let showAssociatedEquipment = false;
+let treeLevelsAbove = 1;
 let warningsOnlyMode = false;
 let associationTypeFilter = new Set();
 let pinnedAssociatedAssets = new Set();
@@ -744,21 +734,9 @@ function buildTreeForView(assetNumber) {
     return null;
   }
 
-  // Declutter rule: always render selected ancestor chain + selected children (+depth).
   const chain = buildAncestorChain(assetNumber);
-  const levels = Math.max(1, Math.min(10, treeLevelsAbove || 1));
-  const childFilter = viewMode === "swimlane" ? isAssetInReferenceTree : null;
-  const subtree = buildSubtree(assetNumber, new Set(), childFilter);
-  const selectedNode = pruneChildrenDepth(subtree, levels);
-
-  if (viewMode === "focus") {
-    return linkAncestorChain(chain.slice(0, -1), selectedNode);
-  }
-
-  if (viewMode === "swimlane") {
-    return linkAncestorChain(chain.slice(0, -1), selectedNode);
-  }
-
+  const subtree = buildSubtree(assetNumber, new Set(), null);
+  const selectedNode = pruneChildrenDepth(subtree, 1);
   return linkAncestorChain(chain.slice(0, -1), selectedNode);
 }
 
@@ -1588,6 +1566,175 @@ function renderAssociationsPanel(treeCodeIndex) {
     });
 }
 
+function getActiveReferenceTree() {
+  if (!referenceTrees.length) {
+    return null;
+  }
+  const selectedTreeId = referenceTreeSelect?.value;
+  return (
+    referenceTrees.find((tree) => tree.id === selectedTreeId) || referenceTrees[0] || null
+  );
+}
+
+function findReferenceRootAssetNumber(assetNumber, rootCodes) {
+  if (!assetNumber || !rootCodes?.length) {
+    return assetNumber;
+  }
+  let current = assetMap.get(assetNumber);
+  let fallback = assetNumber;
+  while (current) {
+    const code = extractNameCode(current.itemNameCodeDesc);
+    if (rootCodes.includes(code)) {
+      return current.assetNumber;
+    }
+    fallback = current.assetNumber;
+    if (!current.parentAssetNumber) {
+      break;
+    }
+    current = assetMap.get(current.parentAssetNumber);
+  }
+  return fallback;
+}
+
+function buildTemplateSlot(refNode, assetNumber, parentAssetNumber) {
+  const nodeCodes = (refNode.nameCodes || []).map((code) => String(code).toUpperCase());
+  const slot = {
+    refNode,
+    assetNumber: assetNumber || null,
+    parentAssetNumber: parentAssetNumber || null,
+    extras: [],
+    children: [],
+  };
+
+  const childNumbers = assetNumber ? childrenMap.get(assetNumber) || [] : [];
+  (refNode.children || []).forEach((childRef) => {
+    const childCodes = (childRef.nameCodes || []).map((code) => String(code).toUpperCase());
+    const matches = childNumbers.filter((childNumber) => {
+      const childAsset = assetMap.get(childNumber);
+      const childCode = extractNameCode(childAsset?.itemNameCodeDesc);
+      return childCode && childCodes.includes(childCode);
+    });
+
+    const childSlot = buildTemplateSlot(childRef, matches[0] || null, assetNumber || null);
+    childSlot.extras = matches.slice(1);
+    slot.children.push(childSlot);
+  });
+
+  if (!assetNumber && nodeCodes.length) {
+    slot.missingGroup = { codes: new Set(nodeCodes), optional: Boolean(refNode.optional) };
+  }
+
+  return slot;
+}
+
+function renderTemplateSlot(slot, treeCodeIndex) {
+  const node = document.createElement("div");
+  node.className = "template-node";
+
+  const card = document.createElement("div");
+  card.className = `template-slot ${slot.assetNumber ? "filled" : "missing"}`;
+
+  const title = document.createElement("div");
+  title.className = "template-title";
+  title.textContent = slot.refNode.title || "Reference slot";
+  card.appendChild(title);
+
+  if (slot.refNode.nameCodes?.length) {
+    const codes = document.createElement("div");
+    codes.className = "template-codes";
+    codes.textContent = slot.refNode.nameCodes.join(" / ");
+    card.appendChild(codes);
+  }
+
+  if (slot.assetNumber) {
+    const asset = assetMap.get(slot.assetNumber);
+    const details = document.createElement("button");
+    details.type = "button";
+    details.className = "template-asset-card";
+    details.textContent = `${slot.assetNumber} · ${asset?.assetDesc1 || asset?.itemNameCodeDesc || "Asset"}`;
+    details.addEventListener("click", () => selectAsset(slot.assetNumber));
+    card.appendChild(details);
+
+    const associations = getAssociatedTargets({ assetNumber: slot.assetNumber }, treeCodeIndex);
+    if (associations.length) {
+      const associationRow = document.createElement("div");
+      associationRow.className = "template-association";
+      const associationLabel = document.createElement("span");
+      associationLabel.textContent = "Associated:";
+      associationRow.appendChild(associationLabel);
+
+      const associationButton = document.createElement("button");
+      associationButton.type = "button";
+      associationButton.className = "template-associated-link";
+      const primary = associations[0];
+      associationButton.textContent = primary.assetNumber;
+      associationButton.title = primary.assetDesc1 || primary.itemNameCodeDesc || "Associated asset";
+      associationButton.addEventListener("click", () => selectAsset(primary.assetNumber));
+      associationRow.appendChild(associationButton);
+
+      if (associations.length > 1) {
+        const more = document.createElement("small");
+        more.textContent = `+${associations.length - 1} more`;
+        associationRow.appendChild(more);
+      }
+      card.appendChild(associationRow);
+    }
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "template-empty";
+    empty.textContent = slot.refNode.optional ? "Optional slot" : "Missing required asset";
+    card.appendChild(empty);
+
+    if (slot.parentAssetNumber && slot.missingGroup && !slot.missingGroup.optional) {
+      const actions = document.createElement("div");
+      actions.className = "template-actions";
+
+      const linkExisting = document.createElement("button");
+      linkExisting.type = "button";
+      linkExisting.textContent = "Link existing";
+      linkExisting.addEventListener("click", () => {
+        openExistingAssetSelectModal(slot.parentAssetNumber, [slot.missingGroup]);
+      });
+      actions.appendChild(linkExisting);
+
+      const addPlaceholder = document.createElement("button");
+      addPlaceholder.type = "button";
+      addPlaceholder.textContent = "Add placeholder";
+      addPlaceholder.addEventListener("click", () => {
+        openPlaceholderSelectModal(slot.parentAssetNumber, [slot.missingGroup]);
+      });
+      actions.appendChild(addPlaceholder);
+      card.appendChild(actions);
+    }
+  }
+
+  if (slot.extras.length) {
+    const extraList = document.createElement("div");
+    extraList.className = "template-extras";
+    slot.extras.forEach((assetNumber) => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.textContent = `+ ${assetNumber}`;
+      chip.addEventListener("click", () => selectAsset(assetNumber));
+      extraList.appendChild(chip);
+    });
+    card.appendChild(extraList);
+  }
+
+  node.appendChild(card);
+
+  if (slot.children.length) {
+    const children = document.createElement("div");
+    children.className = "template-children";
+    slot.children.forEach((childSlot) => {
+      children.appendChild(renderTemplateSlot(childSlot, treeCodeIndex));
+    });
+    node.appendChild(children);
+  }
+
+  return node;
+}
+
 function renderTree() {
   treeContainer.innerHTML = "";
 
@@ -1605,50 +1752,24 @@ function renderTree() {
     return;
   }
 
-  treeStatus.textContent = "";
+  treeStatus.textContent = "Static reference tree view with filled/missing asset slots.";
   const treeCodeIndex = collectTreeCodeIndex(tree);
-  const associatedRoleIndex = showAssociatedEquipment
-    ? collectAssociatedRoleIndex(tree, treeCodeIndex)
-    : new Map();
-
-  // View modes share selection + data model but render distinct layouts.
-  let renderedTree;
-  if (viewMode === "focus") {
-    renderedTree = renderFocusMode(tree, treeCodeIndex, associatedRoleIndex);
-  } else if (viewMode === "swimlane") {
-    renderedTree = renderSwimlaneMode(tree, treeCodeIndex, associatedRoleIndex);
+  const activeReferenceTree = getActiveReferenceTree();
+  if (!activeReferenceTree?.root) {
+    treeContainer.textContent = "No reference tree selected.";
   } else {
-    renderedTree = renderTreeNode(
-      tree,
-      treeCodeIndex,
-      associatedRoleIndex,
-      showAssociatedEquipment,
-      { showSiblingPill: true }
+    const selectedRoot = findReferenceRootAssetNumber(
+      selectedAssetNumber,
+      (activeReferenceTree.root.nameCodes || []).map((code) => String(code).toUpperCase())
     );
+    const templateTree = buildTemplateSlot(activeReferenceTree.root, selectedRoot, null);
+    treeContainer.appendChild(renderTemplateSlot(templateTree, treeCodeIndex));
   }
-  treeContainer.appendChild(renderedTree);
-
-  pinnedAssociatedAssets.forEach((assetNumber) => {
-    const asset = assetMap.get(assetNumber);
-    if (!asset) return;
-    const chip = document.createElement("div");
-    chip.className = "pinned-associated-card";
-    chip.textContent = `${asset.assetNumber} · ${extractNameCode(asset.itemNameCodeDesc)}`;
-    chip.addEventListener("click", () => selectAsset(asset.assetNumber));
-    treeContainer.appendChild(chip);
-  });
 
   renderBreadcrumbs();
   updateHierarchySummary();
   renderAssociationsPanel(treeCodeIndex);
   renderTreeWarnings(tree);
-}
-
-function updateTreeViewControls() {
-  if (!treeLevelsWrapper || !treeLevelsInput) {
-    return;
-  }
-  treeLevelsInput.value = treeLevelsAbove;
 }
 
 function isNameCodeInReferenceTree(code) {
@@ -2791,40 +2912,6 @@ referenceTreeSelect.addEventListener("change", (event) => {
   }
 });
 
-if (treeLevelsInput) {
-  treeLevelsInput.addEventListener("input", (event) => {
-    const value = Number.parseInt(event.target.value, 10);
-    if (Number.isNaN(value)) {
-      return;
-    }
-    treeLevelsAbove = Math.max(1, Math.min(10, value));
-    renderTree();
-  });
-}
-
-if (showAssociatedToggle) {
-  showAssociatedEquipment = showAssociatedToggle.checked;
-  showAssociatedToggle.addEventListener("change", (event) => {
-    showAssociatedEquipment = event.target.checked;
-    renderTree();
-  });
-}
-
-
-
-if (viewModeToggle) {
-  viewModeToggle.addEventListener("click", (event) => {
-    const button = event.target.closest(".view-mode-button");
-    if (!button) {
-      return;
-    }
-    viewMode = button.dataset.mode || "hierarchy";
-    viewModeToggle.querySelectorAll(".view-mode-button").forEach((item) => {
-      item.classList.toggle("active", item === button);
-    });
-    renderTree();
-  });
-}
 
 if (treeSearchInput) {
   treeSearchInput.addEventListener("change", () => {
@@ -2836,50 +2923,7 @@ if (treeSearchInput) {
     );
     if (match) {
       selectAsset(match.assetNumber);
-      centerSelectionButton?.click();
     }
-  });
-}
-
-if (warningsOnlyToggle) {
-  warningsOnlyToggle.addEventListener("change", (event) => {
-    warningsOnlyMode = event.target.checked;
-    renderTree();
-  });
-}
-
-if (fitToViewButton) {
-  fitToViewButton.addEventListener("click", () => {
-    treeContainer.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-  });
-}
-
-if (centerSelectionButton) {
-  centerSelectionButton.addEventListener("click", () => {
-    const selected = treeContainer.querySelector(".node-card.selected");
-    selected?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
-  });
-}
-
-if (historyBackButton) {
-  historyBackButton.addEventListener("click", () => {
-    if (selectionHistoryIndex <= 0) return;
-    selectionHistoryIndex -= 1;
-    selectedAssetNumber = selectionHistory[selectionHistoryIndex];
-    renderAssetList();
-    updateAssetDetails();
-    renderTree();
-  });
-}
-
-if (historyForwardButton) {
-  historyForwardButton.addEventListener("click", () => {
-    if (selectionHistoryIndex >= selectionHistory.length - 1) return;
-    selectionHistoryIndex += 1;
-    selectedAssetNumber = selectionHistory[selectionHistoryIndex];
-    renderAssetList();
-    updateAssetDetails();
-    renderTree();
   });
 }
 
@@ -2897,5 +2941,4 @@ document.querySelectorAll(".right-tab").forEach((tab) => {
   });
 });
 
-updateTreeViewControls();
 loadReferenceTrees();

@@ -415,6 +415,83 @@ body {
   overflow: auto;
 }
 
+
+
+.template-node {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+
+.template-children {
+  margin-left: 1.25rem;
+  border-left: 2px solid #dbeafe;
+  padding-left: 0.9rem;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.template-slot {
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: #f8fafc;
+  display: grid;
+  gap: 0.45rem;
+  max-width: 560px;
+}
+
+.template-slot.missing {
+  background: #f5f3ff;
+  border-color: #ddd6fe;
+}
+
+.template-title { font-weight: 700; color: #1f2937; }
+.template-codes { font-size: 0.8rem; color: #475569; }
+
+.template-asset-card {
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.template-empty { font-size: 0.85rem; color: #6b7280; }
+
+
+.template-association {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #475569;
+}
+
+.template-associated-link {
+  border: 1px solid #bfdbfe;
+  background: #ffffff;
+  border-radius: 8px;
+  padding: 0.2rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+
+
+.template-actions { display: flex; gap: 0.45rem; }
+.template-actions button,
+.template-extras button {
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.template-extras { display: flex; flex-wrap: wrap; gap: 0.4rem; }
 .tree-layout {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) 340px;
@@ -1295,9 +1372,6 @@ body {
 /* Visual grammar + declutter for AssetViewerShell */
 .viewer-toolbar { background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:0.9rem; margin-bottom:1rem; display:grid; gap:0.75rem; }
 .toolbar-row { display:flex; flex-wrap:wrap; gap:0.75rem; align-items:flex-end; }
-.view-mode-toggle { display:inline-flex; border:1px solid #cbd5f5; border-radius:10px; overflow:hidden; }
-.view-mode-button { border:none; background:#eef2ff; color:#1f2937; padding:0.45rem 0.7rem; font-weight:600; cursor:pointer; }
-.view-mode-button.active { background:#4338ca; color:#fff; }
 .tree-search-control { min-width:220px; flex:1; }
 .tree-search-control input { border-radius:10px; border:1px solid #cbd5f5; padding:0.45rem 0.7rem; }
 .toolbar-actions button { border:1px solid #cbd5f5; background:#f8fafc; border-radius:999px; padding:0.45rem 0.7rem; font-weight:600; cursor:pointer; }
@@ -1305,11 +1379,9 @@ body {
 .assoc-chip-row { display:flex; gap:0.4rem; flex-wrap:wrap; }
 .breadcrumbs { display:flex; align-items:center; gap:0.4rem; font-size:0.85rem; margin:0 0 0.7rem; flex-wrap:wrap; }
 .breadcrumb-item { border:1px solid #cbd5f5; background:#fff; border-radius:999px; padding:0.2rem 0.55rem; cursor:pointer; }
-.canvas-legend { display:flex; gap:1rem; align-items:center; margin-bottom:0.7rem; font-size:0.8rem; color:#374151; flex-wrap:wrap; }
 .legend-line { width:30px; height:0; border-top:3px solid #94a3b8; display:inline-block; }
 .legend-line-association { border-top-style:dotted; border-top-width:2px; }
 .graph-canvas { position:relative; }
-.canvas-minimap { margin-top:0.5rem; border:1px dashed #cbd5f5; border-radius:8px; color:#6b7280; font-size:0.75rem; padding:0.35rem 0.5rem; width:fit-content; }
 .siblings-pill, .children-more-pill { border:1px solid #d1d5db; border-radius:999px; padding:0.2rem 0.55rem; font-size:0.75rem; background:#f3f4f6; color:#374151; }
 .children-more-pill { cursor:pointer; }
 .right-panel-tabs { display:flex; gap:0.4rem; margin-bottom:0.75rem; }

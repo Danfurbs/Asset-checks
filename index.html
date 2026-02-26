@@ -86,40 +86,10 @@
                     <option>Switches and Crossings</option>
                   </select>
                 </div>
-                <div class="tree-view-control">
-                  <label>ViewModeToggle</label>
-                  <div class="view-mode-toggle" id="viewModeToggle" role="tablist" aria-label="View mode">
-                    <button type="button" class="view-mode-button active" data-mode="hierarchy">Hierarchy</button>
-                    <button type="button" class="view-mode-button" data-mode="focus">Focus</button>
-                    <button type="button" class="view-mode-button" data-mode="swimlane">Swimlane</button>
-                  </div>
-                </div>
                 <div class="tree-view-control tree-search-control">
                   <label for="treeSearchInput">Search</label>
                   <input type="search" id="treeSearchInput" list="assetSearchOptions" placeholder="Search id/name/type" />
                   <datalist id="assetSearchOptions"></datalist>
-                </div>
-              </div>
-              <div class="toolbar-row">
-                <div class="tree-view-control" id="treeLevelsWrapper">
-                  <label for="treeLevelsInput">Depth</label>
-                  <input type="number" id="treeLevelsInput" min="1" max="10" value="1" step="1" />
-                </div>
-                <div class="toolbar-actions">
-                  <button type="button" id="fitToViewButton">Fit to view</button>
-                  <button type="button" id="centerSelectionButton">Center on selection</button>
-                  <button type="button" id="historyBackButton">Back</button>
-                  <button type="button" id="historyForwardButton">Forward</button>
-                </div>
-                <div class="tree-filter-set">
-                  <label class="tree-associated-toggle" for="showAssociatedToggle">
-                    <input type="checkbox" id="showAssociatedToggle" />
-                    Show associations
-                  </label>
-                  <label class="tree-associated-toggle" for="warningsOnlyToggle">
-                    <input type="checkbox" id="warningsOnlyToggle" />
-                    Warnings only
-                  </label>
                 </div>
               </div>
               <div class="assoc-chip-row" id="associationTypeChips"></div>
@@ -127,13 +97,7 @@
 
             <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
             <div class="breadcrumbs" id="treeBreadcrumbs"></div>
-            <div class="canvas-legend">
-              <span class="legend-item"><span class="legend-line legend-line-hierarchy"></span>Hierarchy edge</span>
-              <span class="legend-item"><span class="legend-line legend-line-association"></span>Association edge</span>
-              <span class="legend-item"><span class="legend-warning">!</span>Warnings</span>
-            </div>
             <div id="treeContainer" class="tree-container graph-canvas"></div>
-            <div class="canvas-minimap" id="canvasMinimap">Minimap</div>
             <div class="tree-warnings" aria-live="polite">
               <div class="tree-warnings-header">
                 <h3>Tree warnings</h3>
