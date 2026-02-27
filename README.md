@@ -4,7 +4,9 @@ Open `index.html` in a browser (or serve the folder) to upload an Excel/CSV expo
 
 - Lists assets on the left with a filterable search box.
 - Shows the selected asset's family tree on the right, built from the **Parent Asset Number** column.
+- Drag assets from the left list and drop them onto matching template slots to link them quickly.
 - Highlights missing parents as a grey "Asset not in download" box.
+- Lets you add placeholder children to required slots, renders them directly in the reference template, remove them with undo, and replace a placeholder with a real asset if one is identified later.
 - Shades obsolete assets red when **Asset Status** begins with `OR`.
 
 - Supports multiple reference trees (including Point Operating Equipment) loaded from `reference-trees.json`.
