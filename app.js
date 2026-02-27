@@ -46,6 +46,9 @@ const orphanParentSelectList = document.getElementById("orphanParentSelectList")
 const orphanParentSelectTitle = document.getElementById("orphanParentSelectTitle");
 const orphanParentSelectCancel = document.getElementById("orphanParentSelectCancel");
 const orphanParentSearch = document.getElementById("orphanParentSearch");
+const undoToast = document.getElementById("undoToast");
+const undoToastMessage = document.getElementById("undoToastMessage");
+const undoToastAction = document.getElementById("undoToastAction");
 
 let assets = [];
 let assetMap = new Map();
@@ -68,8 +71,13 @@ let expandedChildrenParents = new Set();
 let expandedSiblingParents = new Set();
 let existingAssetCandidates = [];
 let existingAssetTargetParentNumber = null;
+let existingAssetReplacementPlaceholderId = null;
 let orphanParentCandidates = [];
 let orphanTargetAssetNumber = null;
+
+let lastRemovedPlaceholder = null;
+let undoToastTimeoutId = null;
+let undoToastHandler = null;
 
 let referenceTrees = [];
 let referenceNameCodes = [];
@@ -1448,8 +1456,9 @@ function updateHierarchySummary() {
   const asset = assetMap.get(selectedAssetNumber);
   const parents = buildAncestorChain(selectedAssetNumber).length - 1;
   const children = (childrenMap.get(selectedAssetNumber) || []).length;
+  const placeholderChildren = (placeholderMap.get(selectedAssetNumber) || []).length;
   const siblings = asset?.parentAssetNumber ? (childrenMap.get(asset.parentAssetNumber) || []).filter((id) => id !== selectedAssetNumber).length : 0;
-  hierarchySummary.textContent = `Parents: ${parents} · Children: ${children} · Siblings: ${siblings}`;
+  hierarchySummary.textContent = `Parents: ${parents} · Children: ${children} · Placeholder children: ${placeholderChildren} · Siblings: ${siblings}`;
 }
 
 function buildAssociationGroups(associations) {
@@ -1596,7 +1605,7 @@ function findReferenceRootAssetNumber(assetNumber, rootCodes) {
   return fallback;
 }
 
-function buildTemplateSlot(refNode, assetNumber, parentAssetNumber) {
+function buildTemplateSlot(refNode, assetNumber, parentAssetNumber, placeholderPool = null) {
   const nodeCodes = (refNode.nameCodes || []).map((code) => String(code).toUpperCase());
   const slot = {
     refNode,
@@ -1607,6 +1616,7 @@ function buildTemplateSlot(refNode, assetNumber, parentAssetNumber) {
   };
 
   const childNumbers = assetNumber ? childrenMap.get(assetNumber) || [] : [];
+  const availablePlaceholders = placeholderPool || (assetNumber ? [...(placeholderMap.get(assetNumber) || [])] : []);
   (refNode.children || []).forEach((childRef) => {
     const childCodes = (childRef.nameCodes || []).map((code) => String(code).toUpperCase());
     const matches = childNumbers.filter((childNumber) => {
@@ -1615,8 +1625,24 @@ function buildTemplateSlot(refNode, assetNumber, parentAssetNumber) {
       return childCode && childCodes.includes(childCode);
     });
 
+    const placeholderMatches = availablePlaceholders.filter((placeholder) =>
+      childCodes.includes(String(placeholder.itemNameCode || "").toUpperCase())
+    );
+    if (placeholderMatches.length) {
+      const matchIds = new Set(placeholderMatches.map((item) => item.id));
+      for (let i = availablePlaceholders.length - 1; i >= 0; i -= 1) {
+        if (matchIds.has(availablePlaceholders[i].id)) {
+          availablePlaceholders.splice(i, 1);
+        }
+      }
+    }
+
     const childSlot = buildTemplateSlot(childRef, matches[0] || null, assetNumber || null);
     childSlot.extras = matches.slice(1);
+    if (!matches.length && placeholderMatches.length) {
+      childSlot.placeholder = placeholderMatches[0];
+      childSlot.placeholderExtras = placeholderMatches.slice(1);
+    }
     slot.children.push(childSlot);
   });
 
@@ -1627,12 +1653,77 @@ function buildTemplateSlot(refNode, assetNumber, parentAssetNumber) {
   return slot;
 }
 
+function getTemplateSlotExpectedCodes(slot) {
+  if (slot.missingGroup?.codes?.size) {
+    return new Set(Array.from(slot.missingGroup.codes).map((code) => String(code).toUpperCase()));
+  }
+  if (slot.refNode?.nameCodes?.length) {
+    return new Set(slot.refNode.nameCodes.map((code) => String(code).toUpperCase()));
+  }
+  return new Set();
+}
+
+function attachTemplateDropHandlers(card, slot) {
+  const parentAssetNumber = slot.parentAssetNumber;
+  const expectedCodes = getTemplateSlotExpectedCodes(slot);
+  if (!parentAssetNumber || !expectedCodes.size || slot.assetNumber) {
+    return;
+  }
+
+  card.classList.add("template-drop-target");
+  card.title = "Drag an asset from the left list and drop it here to link it.";
+
+  card.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    const draggedAssetNumber =
+      event.dataTransfer?.getData("application/x-asset-number") ||
+      event.dataTransfer?.getData("text/plain");
+    const draggedAsset = assetMap.get(draggedAssetNumber);
+    const code = extractNameCode(draggedAsset?.itemNameCodeDesc);
+    const valid = code && expectedCodes.has(code);
+    card.classList.toggle("drag-over", Boolean(valid));
+    card.classList.toggle("drag-invalid", !valid);
+  });
+
+  card.addEventListener("dragleave", () => {
+    card.classList.remove("drag-over", "drag-invalid");
+  });
+
+  card.addEventListener("drop", (event) => {
+    event.preventDefault();
+    card.classList.remove("drag-over", "drag-invalid");
+
+    const draggedAssetNumber =
+      event.dataTransfer?.getData("application/x-asset-number") ||
+      event.dataTransfer?.getData("text/plain");
+    const draggedAsset = assetMap.get(draggedAssetNumber);
+    if (!draggedAsset) {
+      return;
+    }
+
+    const code = extractNameCode(draggedAsset.itemNameCodeDesc);
+    if (!code || !expectedCodes.has(code)) {
+      treeStatus.textContent = `Cannot drop ${draggedAssetNumber} here. Expected: ${Array.from(expectedCodes).join(" / ")}.`;
+      return;
+    }
+
+    updateAssetParent(draggedAssetNumber, parentAssetNumber);
+
+    if (slot.placeholder?.id) {
+      removePlaceholderAsset(slot.placeholder.id, { offerUndo: false });
+    }
+  });
+}
+
 function renderTemplateSlot(slot, treeCodeIndex) {
   const node = document.createElement("div");
   node.className = "template-node";
 
   const card = document.createElement("div");
   card.className = `template-slot ${slot.assetNumber ? "filled" : "missing"}`;
+  if (slot.placeholder) {
+    card.classList.add("placeholder");
+  }
 
   const title = document.createElement("div");
   title.className = "template-title";
@@ -1679,6 +1770,43 @@ function renderTemplateSlot(slot, treeCodeIndex) {
       }
       card.appendChild(associationRow);
     }
+  } else if (slot.placeholder) {
+    const placeholderLabel = document.createElement("div");
+    placeholderLabel.className = "template-placeholder-label";
+    placeholderLabel.textContent = `Placeholder (${slot.placeholder.itemNameCode})`;
+    card.appendChild(placeholderLabel);
+
+    const empty = document.createElement("div");
+    empty.className = "template-empty";
+    empty.textContent = "Placeholder will be included in export as a missing asset.";
+    card.appendChild(empty);
+
+    const actions = document.createElement("div");
+    actions.className = "template-actions";
+
+    if (slot.parentAssetNumber && slot.missingGroup) {
+      const replaceButton = document.createElement("button");
+      replaceButton.type = "button";
+      replaceButton.textContent = "Replace with asset";
+      replaceButton.setAttribute("aria-label", `Replace placeholder ${slot.placeholder.itemNameCode} with a real asset`);
+      replaceButton.addEventListener("click", () => {
+        openExistingAssetSelectModal(slot.parentAssetNumber, [slot.missingGroup], {
+          allowAssigned: true,
+          replacePlaceholderId: slot.placeholder.id,
+        });
+      });
+      actions.appendChild(replaceButton);
+    }
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.textContent = "Remove placeholder";
+    removeButton.setAttribute("aria-label", `Remove placeholder ${slot.placeholder.itemNameCode}`);
+    removeButton.addEventListener("click", () => {
+      removePlaceholderAsset(slot.placeholder.id, { offerUndo: true });
+    });
+    actions.appendChild(removeButton);
+    card.appendChild(actions);
   } else {
     const empty = document.createElement("div");
     empty.className = "template-empty";
@@ -1686,6 +1814,11 @@ function renderTemplateSlot(slot, treeCodeIndex) {
     card.appendChild(empty);
 
     if (slot.parentAssetNumber && slot.missingGroup && !slot.missingGroup.optional) {
+      const hint = document.createElement("div");
+      hint.className = "template-hint";
+      hint.textContent = "Tip: Add a placeholder when the asset is expected but absent from this download.";
+      card.appendChild(hint);
+
       const actions = document.createElement("div");
       actions.className = "template-actions";
 
@@ -1721,6 +1854,18 @@ function renderTemplateSlot(slot, treeCodeIndex) {
     card.appendChild(extraList);
   }
 
+  if (slot.placeholderExtras?.length) {
+    const extraList = document.createElement("div");
+    extraList.className = "template-extras";
+    slot.placeholderExtras.forEach((placeholder) => {
+      const chip = document.createElement("span");
+      chip.textContent = `+ Placeholder ${placeholder.itemNameCode}`;
+      extraList.appendChild(chip);
+    });
+    card.appendChild(extraList);
+  }
+
+  attachTemplateDropHandlers(card, slot);
   node.appendChild(card);
 
   if (slot.children.length) {
@@ -1733,6 +1878,25 @@ function renderTemplateSlot(slot, treeCodeIndex) {
   }
 
   return node;
+}
+
+function summarizeTemplateSlots(slot) {
+  const counts = {
+    filled: 0,
+    missingRequired: 0,
+    placeholders: 0,
+  };
+
+  function visit(node) {
+    if (!node) return;
+    if (node.assetNumber) counts.filled += 1;
+    else if (node.placeholder) counts.placeholders += 1;
+    else if (!node.refNode?.optional) counts.missingRequired += 1;
+    (node.children || []).forEach(visit);
+  }
+
+  visit(slot);
+  return counts;
 }
 
 function renderTree() {
@@ -1752,10 +1916,10 @@ function renderTree() {
     return;
   }
 
-  treeStatus.textContent = "Static reference tree view with filled/missing asset slots.";
   const treeCodeIndex = collectTreeCodeIndex(tree);
   const activeReferenceTree = getActiveReferenceTree();
   if (!activeReferenceTree?.root) {
+    treeStatus.textContent = "No reference tree selected.";
     treeContainer.textContent = "No reference tree selected.";
   } else {
     const selectedRoot = findReferenceRootAssetNumber(
@@ -1763,6 +1927,8 @@ function renderTree() {
       (activeReferenceTree.root.nameCodes || []).map((code) => String(code).toUpperCase())
     );
     const templateTree = buildTemplateSlot(activeReferenceTree.root, selectedRoot, null);
+    const counts = summarizeTemplateSlots(templateTree);
+    treeStatus.textContent = `Reference tree view · Filled: ${counts.filled} · Missing required: ${counts.missingRequired} · Placeholders: ${counts.placeholders}`;
     treeContainer.appendChild(renderTemplateSlot(templateTree, treeCodeIndex));
   }
 
@@ -1939,10 +2105,11 @@ function buildPlaceholderOptions(missingGroups) {
   return options;
 }
 
-function getUnassignedAssetsForGroups(missingGroups, parentAssetNumber) {
+function getCandidateAssetsForGroups(missingGroups, parentAssetNumber, options = {}) {
   if (!missingGroups.length) {
     return [];
   }
+  const { allowAssigned = false } = options;
   const allowedCodes = new Set();
   missingGroups.forEach((group) => {
     group.codes.forEach((code) => {
@@ -1951,16 +2118,28 @@ function getUnassignedAssetsForGroups(missingGroups, parentAssetNumber) {
   });
   return assets
     .filter((asset) => {
-      if (!asset || asset.parentAssetNumber) {
+      if (!asset) {
+        return false;
+      }
+      if (!allowAssigned && asset.parentAssetNumber) {
         return false;
       }
       if (asset.assetNumber === parentAssetNumber) {
+        return false;
+      }
+      if (allowAssigned && isDescendant(asset.assetNumber, parentAssetNumber)) {
         return false;
       }
       const code = extractNameCode(asset.itemNameCodeDesc);
       return code && allowedCodes.has(code);
     })
     .sort((a, b) => a.assetNumber.localeCompare(b.assetNumber));
+}
+
+function getUnassignedAssetsForGroups(missingGroups, parentAssetNumber) {
+  return getCandidateAssetsForGroups(missingGroups, parentAssetNumber, {
+    allowAssigned: false,
+  });
 }
 
 function buildAssetOptionButton(asset, onSelect) {
@@ -2062,6 +2241,9 @@ function renderExistingAssetCandidateList() {
   filtered.forEach((asset) => {
     const button = buildAssetOptionButton(asset, (selected) => {
       updateAssetParent(selected.assetNumber, existingAssetTargetParentNumber);
+      if (existingAssetReplacementPlaceholderId) {
+        removePlaceholderAsset(existingAssetReplacementPlaceholderId, { offerUndo: false });
+      }
       closeExistingAssetSelectModal();
     });
     existingAssetSelectList.appendChild(button);
@@ -2071,23 +2253,28 @@ function renderExistingAssetCandidateList() {
     empty.className = "modal-empty";
     empty.textContent = existingAssetCandidates.length
       ? "No matching assets found."
-      : "No unassigned assets match the missing child groups.";
+      : existingAssetReplacementPlaceholderId
+        ? "No assets match the placeholder item code."
+        : "No unassigned assets match the missing child groups.";
     existingAssetSelectList.appendChild(empty);
   }
 }
 
-function openExistingAssetSelectModal(parentAssetNumber, missingGroups) {
+function openExistingAssetSelectModal(parentAssetNumber, missingGroups, options = {}) {
   if (!existingAssetSelectModal || !existingAssetSelectList) {
     return;
   }
   if (existingAssetSelectTitle) {
-    existingAssetSelectTitle.textContent = `Link existing asset for ${parentAssetNumber}`;
+    existingAssetSelectTitle.textContent = options.replacePlaceholderId ? `Replace placeholder for ${parentAssetNumber}` : `Link existing asset for ${parentAssetNumber}`;
   }
 
+  const { allowAssigned = false, replacePlaceholderId = null } = options;
   existingAssetTargetParentNumber = parentAssetNumber;
-  existingAssetCandidates = getUnassignedAssetsForGroups(
+  existingAssetReplacementPlaceholderId = replacePlaceholderId;
+  existingAssetCandidates = getCandidateAssetsForGroups(
     missingGroups,
-    parentAssetNumber
+    parentAssetNumber,
+    { allowAssigned }
   );
   if (existingAssetSearch) {
     existingAssetSearch.value = "";
@@ -2156,6 +2343,7 @@ function closeExistingAssetSelectModal() {
   }
   existingAssetCandidates = [];
   existingAssetTargetParentNumber = null;
+  existingAssetReplacementPlaceholderId = null;
 }
 
 function getParentCandidates(assetNumber) {
@@ -2336,6 +2524,91 @@ function addPlaceholderAsset(parentAssetNumber, itemNameCode) {
     placeholderMap.set(parentAssetNumber, []);
   }
   placeholderMap.get(parentAssetNumber).push(placeholder);
+
+  updateExportButton();
+  renderTree();
+}
+
+function showUndoToast(message, onUndo) {
+  if (!undoToast || !undoToastAction || !undoToastMessage) {
+    return;
+  }
+  undoToastMessage.textContent = message;
+  undoToast.classList.remove("hidden");
+
+  if (undoToastHandler) {
+    undoToastAction.removeEventListener("click", undoToastHandler);
+  }
+
+  undoToastHandler = () => {
+    if (undoToastTimeoutId) {
+      clearTimeout(undoToastTimeoutId);
+      undoToastTimeoutId = null;
+    }
+    undoToast.classList.add("hidden");
+    if (undoToastHandler) {
+      undoToastAction.removeEventListener("click", undoToastHandler);
+      undoToastHandler = null;
+    }
+    onUndo?.();
+  };
+
+  undoToastAction.addEventListener("click", undoToastHandler);
+
+  if (undoToastTimeoutId) {
+    clearTimeout(undoToastTimeoutId);
+  }
+  undoToastTimeoutId = setTimeout(() => {
+    undoToast.classList.add("hidden");
+    if (undoToastHandler) {
+      undoToastAction.removeEventListener("click", undoToastHandler);
+      undoToastHandler = null;
+    }
+  }, 6000);
+}
+
+function removePlaceholderAsset(placeholderId, options = {}) {
+  if (!placeholderId) {
+    return;
+  }
+
+  const { offerUndo = false } = options;
+  let removed = null;
+  placeholderMap.forEach((items, parentNumber) => {
+    const index = items.findIndex((placeholder) => placeholder.id === placeholderId);
+    if (index !== -1) {
+      removed = items[index];
+      const filtered = items.filter((placeholder) => placeholder.id !== placeholderId);
+      if (filtered.length) {
+        placeholderMap.set(parentNumber, filtered);
+      } else {
+        placeholderMap.delete(parentNumber);
+      }
+    }
+  });
+  if (!removed) {
+    return;
+  }
+
+  placeholderAssets = placeholderAssets.filter((placeholder) => placeholder.id !== placeholderId);
+
+  if (offerUndo) {
+    lastRemovedPlaceholder = removed;
+    showUndoToast(`Removed placeholder ${removed.itemNameCode} from ${removed.parentAssetNumber}.`, () => {
+      if (!lastRemovedPlaceholder) {
+        return;
+      }
+      const item = lastRemovedPlaceholder;
+      placeholderAssets.push(item);
+      if (!placeholderMap.has(item.parentAssetNumber)) {
+        placeholderMap.set(item.parentAssetNumber, []);
+      }
+      placeholderMap.get(item.parentAssetNumber).push(item);
+      lastRemovedPlaceholder = null;
+      updateExportButton();
+      renderTree();
+    });
+  }
 
   updateExportButton();
   renderTree();

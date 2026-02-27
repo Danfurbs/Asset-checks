@@ -69,19 +69,20 @@
           </div>
         </div>
         <div id="listStatus" class="status">Upload a file to load assets.</div>
+        <p class="drag-help">Tip: Drag assets from this list into matching slots in the hierarchy template.</p>
         <ul id="assetList" class="asset-list"></ul>
       </section>
 
       <section class="panel panel-right">
         <div class="panel-header">
-          <h2>AssetViewerShell</h2>
+          <h2>Asset Hierarchy Workspace</h2>
         </div>
         <div class="tree-layout">
           <div class="tree-panel">
             <div class="viewer-toolbar" aria-label="Asset relationship viewer toolbar">
               <div class="toolbar-row">
                 <div class="tree-view-control">
-                  <label for="referenceTreeSelect">TreeTypeSelector</label>
+                  <label for="referenceTreeSelect">Reference tree</label>
                   <select id="referenceTreeSelect" aria-label="Select relationship tree">
                     <option>Switches and Crossings</option>
                   </select>
@@ -137,14 +138,14 @@
             </section>
             <section class="right-panel-section hidden" data-panel-section="associations">
               <div class="associations-panel-header">
-                <h3>AssociationsPanel</h3>
+                <h3>Association review</h3>
                 <input id="associationsSearch" type="search" placeholder="Search associations" />
               </div>
               <div id="associationsPanel" class="associations-panel-list"></div>
             </section>
             <section class="right-panel-section hidden" data-panel-section="details">
               <details class="asset-details" id="assetDetailsPanel" open>
-                <summary>AssetDetailsPanel</summary>
+                <summary>Asset details</summary>
                 <div class="asset-details-body">
                   <p class="asset-details-empty" id="assetDetailsEmpty">
                     Upload a file to load asset details.
@@ -254,6 +255,11 @@
           </button>
         </div>
       </div>
+    </div>
+
+    <div id="undoToast" class="undo-toast hidden" role="status" aria-live="polite">
+      <span id="undoToastMessage">Placeholder removed.</span>
+      <button type="button" id="undoToastAction">Undo</button>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
