@@ -8,259 +8,176 @@
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <h1>Asset Family Tree Viewer</h1>
-        <p>Upload your asset export to explore parent/child relationships.</p>
+      <div class="header-brand">
+        <h1>Asset Hierarchy Tool</h1>
       </div>
       <div class="header-actions">
-        <button type="button" id="exportButton" class="export-button" disabled>
-          Export changes
-        </button>
-        <label class="file-upload">
-          <span>Upload Excel/CSV</span>
+        <label class="file-upload" title="Upload an Excel or CSV asset export">
+          <span>Upload file</span>
           <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
         </label>
       </div>
     </header>
 
-    <main class="layout">
-      <section class="panel panel-left">
-        <div class="panel-header panel-header-stack">
+    <main class="app-body">
+      <!-- LEFT: asset list -->
+      <aside class="panel-left">
+        <div class="left-header">
           <h2>Assets</h2>
-          <div class="filter-controls">
-            <details class="filter-panel" open>
-              <summary>Filters</summary>
-              <div class="filter-fields">
-                <input
-                  type="search"
-                  id="filterInput"
-                  placeholder="Filter by asset number or description"
-                  aria-label="Filter assets"
-                />
-                <select id="groupFilter" aria-label="Filter by relationship group">
-                  <option value="all">All assets</option>
-                  <option value="sc-group">Selected Reference Tree</option>
-                </select>
-                <select
-                  id="itemNameFilter"
-                  aria-label="Filter by item name code and description"
-                >
-                  <option value="all">All Item Name Code &amp; Desc</option>
-                </select>
-                <select id="elrFilter" aria-label="Filter by ELR">
-                  <option value="all">All ELRs</option>
-                </select>
-                <select id="assetClassFilter" aria-label="Filter by asset class">
-                  <option value="all">All Asset Classes</option>
-                </select>
-                <select id="statusFilter" aria-label="Filter by asset status">
-                  <option value="all">All Statuses</option>
-                </select>
-                <label class="filter-checkbox">
-                  <input type="checkbox" id="hideObsoleteToggle" />
-                  Hide obsolete assets
-                </label>
-                <label class="filter-checkbox">
-                  <input type="checkbox" id="errorOnlyToggle" />
-                  Only show errors
-                </label>
-              </div>
-            </details>
-          </div>
+          <span id="listStatus" class="list-count"></span>
         </div>
-        <div id="listStatus" class="status">Upload a file to load assets.</div>
-        <p class="drag-help">Tip: Drag assets from this list into matching slots in the hierarchy template.</p>
+
+        <div class="left-search">
+          <input type="search" id="filterInput" placeholder="Search…" aria-label="Filter assets" />
+        </div>
+
+        <details class="filter-drawer" id="filterDrawer">
+          <summary>Filters</summary>
+          <div class="filter-fields">
+            <select id="groupFilter" aria-label="Filter by reference group">
+              <option value="all">All assets</option>
+              <option value="sc-group">Selected Reference Tree</option>
+            </select>
+            <select id="itemNameFilter" aria-label="Filter by item name"><option value="all">All Item Name Codes</option></select>
+            <select id="elrFilter" aria-label="Filter by ELR"><option value="all">All ELRs</option></select>
+            <select id="assetClassFilter" aria-label="Filter by asset class"><option value="all">All Asset Classes</option></select>
+            <select id="statusFilter" aria-label="Filter by status"><option value="all">All Statuses</option></select>
+            <label class="filter-check"><input type="checkbox" id="hideObsoleteToggle" /> Hide obsolete</label>
+            <label class="filter-check"><input type="checkbox" id="errorOnlyToggle" /> Errors only</label>
+          </div>
+        </details>
+
         <ul id="assetList" class="asset-list"></ul>
-      </section>
+      </aside>
 
-      <section class="panel panel-right">
-        <div class="panel-header">
-          <h2>Asset Hierarchy Workspace</h2>
+      <!-- CENTRE: triage or focus view -->
+      <section class="panel-centre" id="centrePanel">
+
+        <!-- TRIAGE VIEW -->
+        <div id="triageView" class="view-triage">
+          <div class="triage-header">
+            <h2 id="triageTitle">Upload a file to begin</h2>
+            <p id="triageSubtitle">Your asset export will be validated against the selected reference tree.</p>
+          </div>
+          <div id="triageStats" class="triage-stats"></div>
+          <div id="triageIssueList" class="triage-issue-list"></div>
         </div>
-        <div class="tree-layout">
-          <div class="tree-panel">
-            <div class="viewer-toolbar" aria-label="Asset relationship viewer toolbar">
-              <div class="toolbar-row">
-                <div class="tree-view-control">
-                  <label for="referenceTreeSelect">Reference tree</label>
-                  <select id="referenceTreeSelect" aria-label="Select relationship tree">
-                    <option>Switches and Crossings</option>
-                  </select>
-                </div>
-                <div class="tree-view-control tree-search-control">
-                  <label for="treeSearchInput">Search</label>
-                  <input type="search" id="treeSearchInput" list="assetSearchOptions" placeholder="Search id/name/type" />
-                  <datalist id="assetSearchOptions"></datalist>
-                </div>
-              </div>
-              <div class="assoc-chip-row" id="associationTypeChips"></div>
-            </div>
 
-            <div id="treeStatus" class="status">Select an asset to view its family tree.</div>
-            <div class="breadcrumbs" id="treeBreadcrumbs"></div>
-            <div id="treeContainer" class="tree-container graph-canvas"></div>
-            <div class="tree-warnings" aria-live="polite">
-              <div class="tree-warnings-header">
-                <h3>Tree warnings</h3>
-                <span id="treeWarningsCount" class="tree-warnings-count"></span>
-              </div>
-              <p id="treeWarningsStatus" class="tree-warnings-status">
-                Select an asset to see warnings for the family tree.
-              </p>
-              <ul id="treeWarningsList" class="tree-warnings-list"></ul>
+        <!-- FOCUS VIEW -->
+        <div id="focusView" class="view-focus hidden">
+
+          <!-- nav bar -->
+          <div class="focus-nav">
+            <button type="button" id="backToTriage" class="btn-ghost">← Overview</button>
+            <div class="focus-nav-arrows">
+              <button type="button" id="prevIssue" class="btn-icon" title="Previous issue">‹</button>
+              <span id="issuePosition" class="issue-position"></span>
+              <button type="button" id="nextIssue" class="btn-icon" title="Next issue">›</button>
+            </div>
+            <div id="treeSelectorWrap" class="tree-selector-wrap">
+              <label for="referenceTreeSelect">Tree</label>
+              <select id="referenceTreeSelect"></select>
             </div>
           </div>
-          <aside class="reference-panel" aria-label="Right side panel">
-            <div class="right-panel-tabs">
-              <button type="button" class="right-tab active" data-panel-tab="hierarchy">Hierarchy</button>
-              <button type="button" class="right-tab" data-panel-tab="associations">Associations</button>
-              <button type="button" class="right-tab" data-panel-tab="details">Details</button>
+
+          <!-- breadcrumb spine -->
+          <div id="ancestorSpine" class="ancestor-spine"></div>
+
+          <!-- main focus content -->
+          <div class="focus-body">
+            <!-- selected asset card + children -->
+            <div class="focus-main">
+              <div id="focusCard" class="focus-card"></div>
+              <div id="focusChildrenWrap" class="focus-children-wrap">
+                <div id="focusChildren" class="focus-children"></div>
+                <div id="focusChildrenControls" class="focus-children-controls"></div>
+              </div>
             </div>
-            <section class="right-panel-section" data-panel-section="hierarchy">
-              <div class="reference-header">
-                <div>
-                  <h3>Hierarchy Summary</h3>
-                  <p id="hierarchySummary">Select an asset to view hierarchy counts.</p>
-                </div>
+
+            <!-- reference template checklist -->
+            <div class="focus-template" id="focusTemplate">
+              <div class="template-panel-header">
+                <h3>Reference template</h3>
+                <span id="templateSummary" class="template-summary"></span>
               </div>
-              <details class="reference-details" open>
-                <summary>Reference tree structure</summary>
-                <div class="reference-details-body">
-                  <p class="reference-note">
-                    Nodes are defined using <strong>Item Name Code &amp; Desc</strong> values.
-                  </p>
-                  <div id="referenceTreeStatus" class="reference-status">
-                    Loading reference tree…
-                  </div>
-                  <ul id="referenceTree" class="reference-tree"></ul>
-                </div>
-              </details>
-            </section>
-            <section class="right-panel-section hidden" data-panel-section="associations">
-              <div class="associations-panel-header">
-                <h3>Association review</h3>
-                <input id="associationsSearch" type="search" placeholder="Search associations" />
-              </div>
-              <div id="associationsPanel" class="associations-panel-list"></div>
-            </section>
-            <section class="right-panel-section hidden" data-panel-section="details">
-              <details class="asset-details" id="assetDetailsPanel" open>
-                <summary>Asset details</summary>
-                <div class="asset-details-body">
-                  <p class="asset-details-empty" id="assetDetailsEmpty">
-                    Upload a file to load asset details.
-                  </p>
-                  <dl id="assetDetailsList" class="asset-details-list"></dl>
-                </div>
-              </details>
-            </section>
-          </aside>
+              <div id="templateChecklist" class="template-checklist"></div>
+            </div>
+          </div>
+
+          <!-- warnings for this asset -->
+          <div id="focusWarnings" class="focus-warnings"></div>
         </div>
+
       </section>
     </main>
 
+    <!-- PENDING CHANGES TRAY -->
+    <div id="changesTray" class="changes-tray collapsed">
+      <button type="button" class="tray-toggle" id="trayToggle">
+        <span id="trayLabel">No pending changes</span>
+        <span class="tray-chevron">▲</span>
+      </button>
+      <div class="tray-body" id="trayBody">
+        <div id="trayList" class="tray-list"></div>
+        <div class="tray-actions">
+          <button type="button" id="exportButton" class="btn-primary" disabled>Export changes (.xlsx)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODALS -->
     <div id="parentSelectModal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
       <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="parentSelectTitle">
         <h3 id="parentSelectTitle">Select parent</h3>
-        <p class="modal-description">
-          Multiple parents overlap here. Choose the parent to link this asset to.
-        </p>
+        <p class="modal-description">Multiple parents overlap. Choose which to link to.</p>
         <div id="parentSelectList" class="modal-list"></div>
-        <div class="modal-actions">
-          <button type="button" id="parentSelectCancel" class="modal-cancel">
-            Cancel
-          </button>
-        </div>
+        <div class="modal-actions"><button type="button" id="parentSelectCancel" class="btn-ghost">Cancel</button></div>
       </div>
     </div>
 
     <div id="placeholderSelectModal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="placeholderSelectTitle"
-      >
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="placeholderSelectTitle">
         <h3 id="placeholderSelectTitle">Add placeholder</h3>
-        <p class="modal-description">
-          Pick the Item Name Code for the missing asset.
-        </p>
+        <p class="modal-description">Pick the Item Name Code for the missing asset.</p>
         <div id="placeholderSelectList" class="modal-list"></div>
-        <div class="modal-actions">
-          <button type="button" id="placeholderSelectCancel" class="modal-cancel">
-            Cancel
-          </button>
-        </div>
+        <div class="modal-actions"><button type="button" id="placeholderSelectCancel" class="btn-ghost">Cancel</button></div>
       </div>
     </div>
 
     <div id="existingAssetSelectModal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="existingAssetSelectTitle"
-      >
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="existingAssetSelectTitle">
         <h3 id="existingAssetSelectTitle">Link existing asset</h3>
-        <p class="modal-description">
-          Choose an unassigned asset to add as a child in this tree.
-        </p>
+        <p class="modal-description">Choose an unassigned asset to add as a child.</p>
         <div class="modal-filters">
-          <input
-            type="search"
-            id="existingAssetSearch"
-            placeholder="Search by asset number, description, or ELR"
-            aria-label="Search unassigned assets"
-          />
-          <select id="existingAssetItemFilter" aria-label="Filter by item code">
-            <option value="all">All item codes</option>
-          </select>
+          <input type="search" id="existingAssetSearch" placeholder="Search…" aria-label="Search assets" />
+          <select id="existingAssetItemFilter" aria-label="Filter by item code"><option value="all">All item codes</option></select>
         </div>
         <div id="existingAssetSelectList" class="modal-list"></div>
-        <div class="modal-actions">
-          <button type="button" id="existingAssetSelectCancel" class="modal-cancel">
-            Cancel
-          </button>
-        </div>
+        <div class="modal-actions"><button type="button" id="existingAssetSelectCancel" class="btn-ghost">Cancel</button></div>
       </div>
     </div>
 
     <div id="orphanParentSelectModal" class="modal hidden" aria-hidden="true">
       <div class="modal-backdrop"></div>
-      <div
-        class="modal-card"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="orphanParentSelectTitle"
-      >
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="orphanParentSelectTitle">
         <h3 id="orphanParentSelectTitle">Assign new parent</h3>
-        <p class="modal-description">
-          Select a new parent for this orphaned asset.
-        </p>
+        <p class="modal-description">Select a replacement parent for this orphaned asset.</p>
         <div class="modal-filters">
-          <input
-            type="search"
-            id="orphanParentSearch"
-            placeholder="Search parent asset number, description, or ELR"
-            aria-label="Search parent assets"
-          />
+          <input type="search" id="orphanParentSearch" placeholder="Search…" aria-label="Search parents" />
         </div>
         <div id="orphanParentSelectList" class="modal-list"></div>
-        <div class="modal-actions">
-          <button type="button" id="orphanParentSelectCancel" class="modal-cancel">
-            Cancel
-          </button>
-        </div>
+        <div class="modal-actions"><button type="button" id="orphanParentSelectCancel" class="btn-ghost">Cancel</button></div>
       </div>
     </div>
 
     <div id="undoToast" class="undo-toast hidden" role="status" aria-live="polite">
-      <span id="undoToastMessage">Placeholder removed.</span>
+      <span id="undoToastMessage"></span>
       <button type="button" id="undoToastAction">Undo</button>
     </div>
+
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
   </body>
