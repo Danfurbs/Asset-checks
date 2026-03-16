@@ -87,8 +87,11 @@ let viewMode = "tree";   // "tree" | "template" | "sidebyside"
 let showAssoc = false;
 let zoom = 1, panX = 0, panY = 0;
 let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
-let existingAssetCandidates = [], existingAssetTargetParentNumber = null, existingAssetReplacementPlaceholderId = null;
+let existingAssetCandidates = [], existingAssetTargetParentNumber = null, existingAssetReplacementPlaceholderId = null, existingAssetSourceTemplateTid = null;
 let orphanParentCandidates = [], orphanTargetAssetNumber = null;
+let activeSlotBar = null; // { node, element }
+let ghostDropTargets = new Map();
+let dragOverGhostTid = null;
 
 // ── SVG namespace helper ──────────────────────────────────────────────
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -289,45 +292,44 @@ function offsetPositions(pos, dx) {
   return shifted;
 }
 
-function findTemplateMatch(codes, parentAssetId, ctx) {
-  if(!codes.length) return null;
-  const {usedAssetIds=new Set(),usedPlaceholderIds=new Set(),scopeRootId=null}=ctx;
-  const matchesCode=v=>codes.includes(v);
+function findTemplateMatch(codes, parentRef, ctx) {
+  if (!codes.length) return null;
+  const { usedAssetIds = new Set(), usedPlaceholderIds = new Set(), scopeRootId = null } = ctx;
+  const matchesCode = v => codes.includes(v);
 
-  const directAsset=getChildAssetIdsByParentRef(parentAssetId).find(cid=>{
-    if(usedAssetIds.has(cid)) return false;
+  // 1. Direct child via childrenMap / placeholderChildrenMap
+  const directChildren = getChildAssetIdsByParentRef(parentRef);
+  const directAsset = directChildren.find(cid => {
+    if (usedAssetIds.has(cid)) return false;
     return matchesCode(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc));
   });
-  if(directAsset){ usedAssetIds.add(directAsset); return {assetId:directAsset}; }
+  if (directAsset) { usedAssetIds.add(directAsset); return { assetId: directAsset }; }
 
-  const directPlaceholder=(placeholderMap.get(parentAssetId)||[]).find(ph=>!usedPlaceholderIds.has(ph.id)&&matchesCode(ph.itemNameCode));
-  if(directPlaceholder){ usedPlaceholderIds.add(directPlaceholder.id); return {placeholderId:directPlaceholder.id}; }
+  // 2. Direct placeholder child
+  const realParentId = isPlaceholderRef(parentRef)
+    ? getPlaceholderByRef(parentRef)?.parentAssetNumber : parentRef;
+  const directPlaceholder = (placeholderMap.get(realParentId) || [])
+    .find(ph => !usedPlaceholderIds.has(ph.id) && matchesCode(ph.itemNameCode));
+  if (directPlaceholder) { usedPlaceholderIds.add(directPlaceholder.id); return { placeholderId: directPlaceholder.id }; }
 
-  const fallbackRoot=parentAssetId||scopeRootId;
-  if(!fallbackRoot) return null;
-
-  const descendantAssetIds=[];
-  const descendantPlaceholders=[];
-  (function walk(ref){
-    getChildAssetIdsByParentRef(ref).forEach(cid=>{
-      descendantAssetIds.push(cid);
-      walk(cid);
-    });
-    (placeholderMap.get(ref)||[]).forEach(ph=>{
-      descendantPlaceholders.push(ph);
-      walk(`__ph__${ph.id}`);
-    });
-  })(fallbackRoot);
-
-  const fallbackAsset=descendantAssetIds.find(cid=>{
-    if(usedAssetIds.has(cid)) return false;
-    return matchesCode(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc));
+  // 3. Any asset in scope with matching code (includes mis-parented assets)
+  const scopeIds = scopeRootId ? subtreeIds(scopeRootId) : new Set();
+  const scopeAsset = assets.find(a => {
+    if (!a || usedAssetIds.has(a.assetNumber)) return false;
+    if (scopeIds.size && !scopeIds.has(a.assetNumber)) return false;
+    return matchesCode(extractNameCode(a.itemNameCodeDesc));
   });
-  if(fallbackAsset){ usedAssetIds.add(fallbackAsset); return {assetId:fallbackAsset}; }
+  if (scopeAsset) { usedAssetIds.add(scopeAsset.assetNumber); return { assetId: scopeAsset.assetNumber }; }
 
-  const fallbackPlaceholder=descendantPlaceholders
-    .find(ph=>!usedPlaceholderIds.has(ph.id)&&matchesCode(ph.itemNameCode));
-  if(fallbackPlaceholder){ usedPlaceholderIds.add(fallbackPlaceholder.id); return {placeholderId:fallbackPlaceholder.id}; }
+  // 4. Placeholder fallback across scope
+  let fallbackPlaceholder = null;
+  scopeIds.forEach(id => {
+    if (fallbackPlaceholder) return;
+    const ph = (placeholderMap.get(id) || [])
+      .find(p => !usedPlaceholderIds.has(p.id) && matchesCode(p.itemNameCode));
+    if (ph) fallbackPlaceholder = ph;
+  });
+  if (fallbackPlaceholder) { usedPlaceholderIds.add(fallbackPlaceholder.id); return { placeholderId: fallbackPlaceholder.id }; }
 
   return null;
 }
@@ -355,6 +357,7 @@ function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,
   const cls=["tree-node-g"];
   if(asset?.parentAssetNumber?.startsWith("__ph__")) cls.push("placeholder-parented");
   const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:cls.join(" "),style:"cursor:pointer"});
+  g.setAttribute("data-asset", asset?.assetNumber || "");
 
   // shadow + rect
   g.appendChild(svgEl("rect",{width:NW,height:NH,rx:10,fill:col.bg,stroke:col.border,"stroke-width":selected?2.5:1.5,filter:selected?"url(#selectedShadow)":"url(#nodeShadow)"}));
@@ -429,8 +432,38 @@ function subtreeIds(rootId) {
   walk(rootId); return ids;
 }
 
+function flashNodeSuccess(g) {
+  if (!g) return;
+  g.classList.add("node-flash-success");
+  setTimeout(() => g.classList.remove("node-flash-success"), 500);
+}
+
+function clearGhostDragState() {
+  if (!dragOverGhostTid) return;
+  const prev = svgRoot.querySelector(`[data-template-tid="${dragOverGhostTid}"]`);
+  prev?.classList.remove("drag-over-ghost");
+  dragOverGhostTid = null;
+}
+
+function hitTestGhostDropTarget(clientX, clientY) {
+  const rect = canvasWrap.getBoundingClientRect();
+  const svgX = (clientX - rect.left - panX) / zoom;
+  const svgY = (clientY - rect.top - panY) / zoom;
+  let matched = null;
+  ghostDropTargets.forEach(({ node, svgX: cx, svgY: topY }, tid) => {
+    if (matched) return;
+    if (svgX >= cx - NW / 2 && svgX <= cx + NW / 2 && svgY >= topY && svgY <= topY + NH) {
+      matched = { tid, node };
+    }
+  });
+  return matched;
+}
+
 // ── Main render ───────────────────────────────────────────────────────
 function renderCanvas() {
+  dismissSlotBar();
+  ghostDropTargets = new Map();
+  clearGhostDragState();
   svgRoot.innerHTML="";
   if(!selectedAssetNumber) return;
   const rootId=findTreeRoot(selectedAssetNumber);
@@ -508,11 +541,25 @@ function renderTemplateMode(rootId) {
       card.addEventListener("click",()=>selectAsset(n.assetId));
     } else if(placeholder){
       card=makePlaceholderCardEditable(placeholder,p.x,p.y);
-      card.addEventListener("click",()=>openMissingSlotActionModal(n));
+      card.setAttribute("data-template-tid", n.tid);
+      if (n.parentAssetId) {
+        ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
+        card.addEventListener("click", e => {
+          e.stopPropagation();
+          const pos = p;
+          if (pos) showInlineSlotBar(n, pos.x, pos.y);
+        });
+      }
     } else {
       card=makeGhostCardEditable(n.refNode,p.x,p.y);
+      card.setAttribute("data-template-tid", n.tid);
       if(n.parentAssetId){
-        card.addEventListener("click",()=>openMissingSlotActionModal(n));
+        ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
+        card.addEventListener("click", e => {
+          e.stopPropagation();
+          const pos = p;
+          if (pos) showInlineSlotBar(n, pos.x, pos.y);
+        });
       }
     }
     nodes.appendChild(card);
@@ -571,7 +618,28 @@ function renderSideBySide(rootId) {
 
     tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
     const te=svgEl("g"), tn=svgEl("g");
-    function walkT(n){ const p=tPos.get(n.tid); if(!p) return; n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); }); const asset=n.assetId?assetMap.get(n.assetId):null; const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null; let card=asset?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)}):placeholder?makePlaceholderCardEditable(placeholder,p.x,p.y):makeGhostCardEditable(n.refNode,p.x,p.y); if(asset){card.addEventListener("click",()=>selectAsset(n.assetId));} else if(n.parentAssetId){card.addEventListener("click",()=>openMissingSlotActionModal(n));} tn.appendChild(card); n.children.forEach(walkT); }
+    function walkT(n){
+      const p=tPos.get(n.tid); if(!p) return;
+      n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
+      const asset=n.assetId?assetMap.get(n.assetId):null;
+      const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null;
+      let card=asset
+        ?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)})
+        :placeholder?makePlaceholderCardEditable(placeholder,p.x,p.y):makeGhostCardEditable(n.refNode,p.x,p.y);
+      if(asset){
+        card.addEventListener("click",()=>selectAsset(n.assetId));
+      } else if(n.parentAssetId){
+        card.setAttribute("data-template-tid", n.tid);
+        ghostDropTargets.set(n.tid, { node: n, svgX: p.x + tOffX, svgY: p.y });
+        card.addEventListener("click", e => {
+          e.stopPropagation();
+          const pos=tPos.get(n.tid);
+          if(pos) showInlineSlotBar(n, pos.x + tOffX, pos.y);
+        });
+      }
+      tn.appendChild(card);
+      n.children.forEach(walkT);
+    }
     walkT(tmpl);
     // label
     const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":0,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
@@ -660,6 +728,56 @@ canvasWrap.addEventListener("wheel",e=>{
 zoomInBtn.addEventListener("click",()=>{ zoom=Math.min(2.5,zoom*1.2); applyTransform(); });
 zoomOutBtn.addEventListener("click",()=>{ zoom=Math.max(0.15,zoom*0.8); applyTransform(); });
 fitBtn.addEventListener("click",()=>{ hasFit=false; renderCanvas(); });
+
+canvasWrap.addEventListener("dragover", e => {
+  const hasAssetPayload = e.dataTransfer?.types?.includes("application/x-asset-number");
+  if (!hasAssetPayload || !ghostDropTargets.size) return;
+  const hit = hitTestGhostDropTarget(e.clientX, e.clientY);
+  clearGhostDragState();
+  if (!hit) return;
+  const targetEl = svgRoot.querySelector(`[data-template-tid="${hit.tid}"]`);
+  if (targetEl) {
+    targetEl.classList.add("drag-over-ghost");
+    dragOverGhostTid = hit.tid;
+  }
+  e.preventDefault();
+});
+
+canvasWrap.addEventListener("dragleave", e => {
+  if (e.target === canvasWrap) clearGhostDragState();
+});
+
+canvasWrap.addEventListener("drop", e => {
+  const assetNumber = e.dataTransfer?.getData("application/x-asset-number");
+  if (!assetNumber) return;
+  const hit = hitTestGhostDropTarget(e.clientX, e.clientY);
+  clearGhostDragState();
+  if (!hit) return;
+  e.preventDefault();
+
+  const asset = assetMap.get(assetNumber);
+  const groups = getTemplateNodeGroups(hit.node);
+  const allowed = new Set();
+  groups.forEach(g => g.codes.forEach(c => allowed.add(c)));
+  const code = extractNameCode(asset?.itemNameCodeDesc);
+  const targetEl = svgRoot.querySelector(`[data-template-tid="${hit.tid}"]`);
+
+  if (!asset || !allowed.has(code)) {
+    if (targetEl) {
+      targetEl.classList.add("drag-invalid-ghost");
+      setTimeout(() => targetEl.classList.remove("drag-invalid-ghost"), 600);
+    }
+    return;
+  }
+
+  flashNodeSuccess(targetEl);
+  if (isPlaceholderRef(hit.node.parentAssetId)) {
+    assignAssetToPlaceholder(assetNumber, getPlaceholderIdFromRef(hit.node.parentAssetId), { flashEl: targetEl });
+  } else {
+    updateAssetParent(assetNumber, hit.node.parentAssetId, false, { flashEl: targetEl });
+  }
+  selectAsset(assetNumber);
+});
 
 // ── Detail panel ──────────────────────────────────────────────────────
 function openDetailPanel(num) {
@@ -879,6 +997,13 @@ function renderAssetList() {
     const desc=asset.assetDesc1||asset.assetDesc2||"";
     lbl.textContent=desc?`${asset.assetNumber} · ${desc}`:asset.assetNumber;
     btn.appendChild(lbl); btn.addEventListener("click",()=>selectAsset(asset.assetNumber));
+    btn.draggable = true;
+    btn.addEventListener("dragstart", e => {
+      e.dataTransfer.setData("application/x-asset-number", asset.assetNumber);
+      e.dataTransfer.effectAllowed = "move";
+      btn.classList.add("dragging");
+    });
+    btn.addEventListener("dragend", () => { btn.classList.remove("dragging"); clearGhostDragState(); });
     li.appendChild(btn); assetList.appendChild(li);
   });
 }
@@ -955,8 +1080,14 @@ function updateChangesTray() {
 }
 trayToggle.addEventListener("click",()=>{changesTray.classList.toggle("collapsed");changesTray.classList.toggle("expanded");});
 
+function refreshAfterHierarchyChange(focusAssetNumber = selectedAssetNumber) {
+  hasFit = false;
+  renderCanvas();
+  if (focusAssetNumber) openDetailPanel(focusAssetNumber);
+}
+
 // ── Asset parent update ───────────────────────────────────────────────
-function updateAssetParent(num,newParent,isRevert=false) {
+function updateAssetParent(num,newParent,isRevert=false,{ flashEl=null }={}) {
   const asset=assetMap.get(num);if(!asset||!newParent||num===newParent||isDescendant(num,newParent))return;
   const old=asset.parentAssetNumber||null;if(old===newParent)return;
   if(old?.startsWith("__ph__")){
@@ -971,18 +1102,20 @@ function updateAssetParent(num,newParent,isRevert=false) {
   if(!childrenMap.get(newParent).includes(num))childrenMap.get(newParent).push(num);
   if(isRevert||originalParentMap.get(num)===newParent)changedAssets.delete(num);else changedAssets.add(num);
   buildIssueList();updateChangesTray();renderAssetList();
-  if(selectedAssetNumber){hasFit=false;renderCanvas();openDetailPanel(selectedAssetNumber);}
+  flashNodeSuccess(flashEl);
+  refreshAfterHierarchyChange(selectedAssetNumber);
 }
 
 // ── Placeholders ──────────────────────────────────────────────────────
-function addPlaceholderAsset(parentNum,itemNameCode) {
+function addPlaceholderAsset(parentNum,itemNameCode,{ flashEl=null }={}) {
   if(!parentNum||!itemNameCode)return;
   const phId=`ph-${placeholderCounter++}`;
   const ph={id:phId,assetNumber:`__ph__${phId}`,parentAssetNumber:parentNum,itemNameCode};
   placeholderAssets.push(ph);
   if(!placeholderMap.has(parentNum))placeholderMap.set(parentNum,[]);
   placeholderMap.get(parentNum).push(ph);
-  buildIssueList();updateChangesTray();if(selectedAssetNumber){hasFit=false;renderCanvas();openDetailPanel(selectedAssetNumber);}
+  buildIssueList();updateChangesTray();flashNodeSuccess(flashEl);
+  refreshAfterHierarchyChange(selectedAssetNumber);
 }
 function removePlaceholderAsset(id,{offerUndo=false}={}) {
   let removed=null;
@@ -1000,7 +1133,7 @@ function removePlaceholderAsset(id,{offerUndo=false}={}) {
   if(selectedAssetNumber) hasFit=false;
   buildIssueList();updateChangesTray();if(selectedAssetNumber){renderCanvas();openDetailPanel(selectedAssetNumber);}
 }
-function assignAssetToPlaceholder(assetNumber, placeholderId) {
+function assignAssetToPlaceholder(assetNumber, placeholderId,{ flashEl=null }={}) {
   const asset=assetMap.get(assetNumber);
   const placeholder=placeholderAssets.find(ph=>ph.id===placeholderId);
   if(!asset||!placeholder) return;
@@ -1020,7 +1153,8 @@ function assignAssetToPlaceholder(assetNumber, placeholderId) {
   if(!current.includes(assetNumber)) placeholderChildrenMap.set(placeholderId,[...current,assetNumber]);
   if(originalParentMap.get(assetNumber)===asset.parentAssetNumber) changedAssets.delete(assetNumber); else changedAssets.add(assetNumber);
   buildIssueList(); updateChangesTray(); renderAssetList();
-  hasFit=false; renderCanvas(); openDetailPanel(assetNumber);
+  flashNodeSuccess(flashEl);
+  refreshAfterHierarchyChange(assetNumber);
 }
 
 function getAssignablePlaceholdersForAsset(asset) {
@@ -1058,9 +1192,22 @@ function showUndoToast(msg,onUndo) {
 }
 
 // ── Modal helpers ─────────────────────────────────────────────────────
-function getCandidateAssetsForGroups(groups,parentNum,{allowAssigned=false}={}) {
-  const allowed=new Set();groups.forEach(g=>g.codes.forEach(c=>allowed.add(c)));
-  return assets.filter(a=>{if(!a)return false;if(!allowAssigned&&a.parentAssetNumber)return false;if(a.assetNumber===parentNum)return false;if(allowAssigned&&isDescendant(a.assetNumber,parentNum))return false;const c=extractNameCode(a.itemNameCodeDesc);return c&&allowed.has(c);}).sort((a,b)=>a.assetNumber.localeCompare(b.assetNumber));
+function getCandidateAssetsForGroups(groups, parentNum, { allowAssigned = false } = {}) {
+  const allowed = new Set();
+  groups.forEach(g => g.codes.forEach(c => allowed.add(c)));
+  return assets.filter(a => {
+    if (!a || a.assetNumber === parentNum) return false;
+    if (allowAssigned && isDescendant(a.assetNumber, parentNum)) return false;
+    const c = extractNameCode(a.itemNameCodeDesc);
+    if (!c || !allowed.has(c)) return false;
+    if (!a.parentAssetNumber) return true;
+    if (allowAssigned) return true;
+    if (isReferenceMismatch(a)) return true;  // mis-parented — include as candidate
+    return false;
+  }).sort((a, b) => {
+    const s = x => !x.parentAssetNumber ? 0 : isReferenceMismatch(x) ? 1 : 2;
+    return s(a) - s(b) || a.assetNumber.localeCompare(b.assetNumber);
+  });
 }
 function getUnassignedAssetsForGroups(groups,parentNum){return getCandidateAssetsForGroups(groups,parentNum,{allowAssigned:false});}
 function getParentCandidates(num){return assets.filter(a=>a&&a.assetNumber!==num&&!isDescendant(num,a.assetNumber)&&!isObsolete(a)).sort((a,b)=>a.assetNumber.localeCompare(b.assetNumber));}
@@ -1070,59 +1217,126 @@ function getTemplateNodeGroups(node){
   if(!codes.length) return [];
   return [{codes:new Set(codes),optional:Boolean(node?.refNode?.optional)}];
 }
-function buildAssetOptionButton(asset,onSelect){
-  const btn=document.createElement("button");btn.type="button";btn.className="modal-option";
-  const t=document.createElement("span");t.className="modal-option-title";t.textContent=asset.assetNumber;btn.appendChild(t);
-  const dl=document.createElement("dl");dl.className="modal-option-details";
-  [{label:"Item Name Code",value:asset.itemNameCodeDesc},{label:"Desc",value:asset.assetDesc1},{label:"ELR",value:asset.elr},{label:"Status",value:asset.assetStatus},{label:"Track ID",value:asset.trackId}].forEach(({label,value})=>{if(!value)return;const dt=document.createElement("dt");dt.textContent=label;const dd=document.createElement("dd");dd.textContent=value;dl.appendChild(dt);dl.appendChild(dd);});
-  btn.appendChild(dl);btn.addEventListener("click",()=>onSelect(asset));return btn;
+function buildAssetOptionButton(asset, onSelect) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "modal-option";
+
+  const title = document.createElement("span");
+  title.className = "modal-option-title";
+  title.textContent = asset.assetNumber;
+  btn.appendChild(title);
+
+  const tag = document.createElement("span");
+  if (asset.parentAssetNumber) {
+    tag.style.cssText = "font-size:.68rem;font-weight:600;padding:.1rem .4rem;border-radius:999px;background:#fee2e2;color:#991b1b;width:fit-content;display:block;margin-bottom:.2rem;";
+    tag.textContent = `⚠ Currently under ${asset.parentAssetNumber}`;
+  } else {
+    tag.style.cssText = "font-size:.68rem;font-weight:600;padding:.1rem .4rem;border-radius:999px;background:#f0fdf4;color:#166534;width:fit-content;display:block;margin-bottom:.2rem;";
+    tag.textContent = "Unassigned";
+  }
+  btn.appendChild(tag);
+
+  const dl = document.createElement("dl");
+  dl.className = "modal-option-details";
+  [
+    { label: "Item Name Code", value: asset.itemNameCodeDesc },
+    { label: "Desc", value: asset.assetDesc1 },
+    { label: "ELR", value: asset.elr },
+    { label: "Status", value: asset.assetStatus },
+    { label: "Track ID", value: asset.trackId },
+  ].forEach(({ label, value }) => {
+    if (!value) return;
+    const dt = document.createElement("dt"); dt.textContent = label;
+    const dd = document.createElement("dd"); dd.textContent = value;
+    dl.appendChild(dt); dl.appendChild(dd);
+  });
+  btn.appendChild(dl);
+  btn.addEventListener("click", () => onSelect(asset));
+  return btn;
 }
-function openPlaceholderSelectModal(parentNum,groups){
+function openPlaceholderSelectModal(parentNum,groups,templateTid=null){
   placeholderSelectList.innerHTML="";
   if(placeholderSelectTitle)placeholderSelectTitle.textContent=`Add placeholder for ${parentNum}`;
-  buildPlaceholderOptions(groups).forEach(opt=>{const btn=document.createElement("button");btn.type="button";btn.className="modal-option";btn.textContent=opt.code;const s=document.createElement("small");s.textContent=`Group: ${opt.groupLabel}`;btn.appendChild(s);btn.addEventListener("click",()=>{addPlaceholderAsset(parentNum,opt.code);closeModal(placeholderSelectModal);});placeholderSelectList.appendChild(btn);});
+  buildPlaceholderOptions(groups).forEach(opt=>{const btn=document.createElement("button");btn.type="button";btn.className="modal-option";btn.textContent=opt.code;const s=document.createElement("small");s.textContent=`Group: ${opt.groupLabel}`;btn.appendChild(s);btn.addEventListener("click",()=>{addPlaceholderAsset(parentNum,opt.code,{ flashEl: templateTid ? svgRoot.querySelector(`[data-template-tid="${templateTid}"]`) : null });closeModal(placeholderSelectModal);});placeholderSelectList.appendChild(btn);});
   openModal(placeholderSelectModal);
 }
-function openMissingSlotActionModal(node){
-  const parentNum=node?.parentAssetId;
-  if(!parentNum) return;
-  const groups=getTemplateNodeGroups(node);
-  if(!groups.length) return;
-  const placeholder=node?.placeholderId?placeholderAssets.find(p=>p.id===node.placeholderId):null;
-  if(missingSlotActionTitle){
-    const label=node.refNode?.title||Array.from(groups[0].codes).join("/");
-    missingSlotActionTitle.textContent=placeholder?`Manage placeholder ${placeholder.itemNameCode}`:`Resolve missing ${label}`;
-  }
-  missingSlotActionList.innerHTML="";
-  const cands=getUnassignedAssetsForGroups(groups,parentNum);
-
-  const linkBtn=document.createElement("button");
-  linkBtn.type="button";
-  linkBtn.className="modal-option";
-  linkBtn.innerHTML=`${placeholder?"Replace with":"Link"} existing unmatched asset<small>${cands.length?`${cands.length} candidate${cands.length===1?"":"s"} available`:"No unmatched candidate available"}</small>`;
-  linkBtn.disabled=!cands.length;
-  linkBtn.addEventListener("click",()=>{openExistingAssetSelectModal(parentNum,groups,{replacePlaceholderId:placeholder?.id||null});closeMissingSlotActionModal();});
-  missingSlotActionList.appendChild(linkBtn);
-
-  if(placeholder){
-    const rmBtn=document.createElement("button");
-    rmBtn.type="button";
-    rmBtn.className="modal-option";
-    rmBtn.innerHTML='Remove placeholder<small>Delete this placeholder from the tree.</small>';
-    rmBtn.addEventListener("click",()=>{removePlaceholderAsset(placeholder.id,{offerUndo:true});closeMissingSlotActionModal();});
-    missingSlotActionList.appendChild(rmBtn);
-  }
-
-  const addBtn=document.createElement("button");
-  addBtn.type="button";
-  addBtn.className="modal-option";
-  addBtn.innerHTML=`${placeholder?"Add another placeholder":"Add placeholder"}<small>Create a temporary asset for this required type.</small>`;
-  addBtn.addEventListener("click",()=>{openPlaceholderSelectModal(parentNum,groups);closeMissingSlotActionModal();});
-  missingSlotActionList.appendChild(addBtn);
-
-  openModal(missingSlotActionModal);
+function dismissSlotBar(){
+  if (activeSlotBar) { activeSlotBar.element.remove(); activeSlotBar = null; }
 }
-function closeMissingSlotActionModal(){closeModal(missingSlotActionModal);}
+
+function showInlineSlotBar(templateNode, svgX, svgY) {
+  dismissSlotBar();
+  const parentNum = templateNode?.parentAssetId;
+  if (!parentNum) return;
+  const groups = getTemplateNodeGroups(templateNode);
+  if (!groups.length) return;
+  const placeholder = templateNode?.placeholderId ? placeholderAssets.find(p => p.id === templateNode.placeholderId) : null;
+  const candidates = getCandidateAssetsForGroups(groups, parentNum, { allowAssigned: true });
+
+  const bar = document.createElement("div");
+  bar.className = "slot-action-bar";
+  const screenX = svgX * zoom + panX;
+  const screenY = (svgY + NH) * zoom + panY + 6;
+  bar.style.left = `${screenX}px`;
+  bar.style.top = `${screenY}px`;
+
+  const title = document.createElement("div");
+  title.className = "bar-title";
+  title.textContent = placeholder ? `Placeholder ${placeholder.itemNameCode}` : (templateNode.refNode?.title || "Missing slot");
+  bar.appendChild(title);
+
+  if (candidates.length) {
+    const linkBtn = document.createElement("button");
+    linkBtn.type = "button";
+    linkBtn.className = "bar-btn-primary";
+    linkBtn.textContent = `Link asset (${candidates.length})`;
+    linkBtn.addEventListener("click", () => {
+      openExistingAssetSelectModal(parentNum, groups, { allowAssigned: true, replacePlaceholderId: placeholder?.id || null, sourceTemplateTid: templateNode.tid });
+      dismissSlotBar();
+    });
+    bar.appendChild(linkBtn);
+  }
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.textContent = "+ Placeholder";
+  addBtn.addEventListener("click", () => {
+    openPlaceholderSelectModal(parentNum, groups, templateNode.tid);
+    dismissSlotBar();
+  });
+  bar.appendChild(addBtn);
+
+  if (placeholder) {
+    const rmBtn = document.createElement("button");
+    rmBtn.type = "button";
+    rmBtn.className = "bar-btn-danger";
+    rmBtn.textContent = "Remove";
+    rmBtn.addEventListener("click", () => {
+      removePlaceholderAsset(placeholder.id, { offerUndo: true });
+      dismissSlotBar();
+    });
+    bar.appendChild(rmBtn);
+  }
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.type = "button";
+  dismissBtn.className = "bar-dismiss";
+  dismissBtn.textContent = "✕";
+  dismissBtn.addEventListener("click", dismissSlotBar);
+  bar.appendChild(dismissBtn);
+
+  canvasWrap.appendChild(bar);
+  activeSlotBar = { node: templateNode, element: bar };
+
+  const closeOnOutside = e => {
+    if (!activeSlotBar) return;
+    if (activeSlotBar.element.contains(e.target)) return;
+    dismissSlotBar();
+  };
+  canvasWrap.addEventListener("pointerdown", closeOnOutside, { once: true });
+}
+
 function updateExistingItemFilter(cands){if(!existingAssetItemFilter)return;const codes=new Set();cands.forEach(a=>{const c=extractNameCode(a.itemNameCodeDesc);if(c)codes.add(c);});existingAssetItemFilter.innerHTML="";const all=document.createElement("option");all.value="all";all.textContent="All item codes";existingAssetItemFilter.appendChild(all);Array.from(codes).sort().forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;existingAssetItemFilter.appendChild(o);});}
 function renderExistingList(){
   existingAssetSelectList.innerHTML="";
@@ -1141,20 +1355,31 @@ function renderExistingList(){
     existingAssetSelectList.appendChild(p);
     return;
   }
-  filtered.forEach(a=>existingAssetSelectList.appendChild(buildAssetOptionButton(a,selected=>{
-    if(isPlaceholderRef(existingAssetTargetParentNumber))assignAssetToPlaceholder(selected.assetNumber,getPlaceholderIdFromRef(existingAssetTargetParentNumber));
-    else updateAssetParent(selected.assetNumber,existingAssetTargetParentNumber);
-    if(existingAssetReplacementPlaceholderId){
-      const phChildren=placeholderChildrenMap.get(existingAssetReplacementPlaceholderId)||[];
-      phChildren.forEach(childAssetNumber=>updateAssetParent(childAssetNumber,selected.assetNumber));
-      placeholderChildrenMap.delete(existingAssetReplacementPlaceholderId);
-      removePlaceholderAsset(existingAssetReplacementPlaceholderId,{offerUndo:false});
-    }
-    closeExistingAssetSelectModal();
-  })));
+  filtered.forEach(a => existingAssetSelectList.appendChild(
+    buildAssetOptionButton(a, selected => {
+      const targetIsPlaceholder = isPlaceholderRef(existingAssetTargetParentNumber);
+      const flashTarget = existingAssetSourceTemplateTid
+        ? svgRoot.querySelector(`[data-template-tid="${existingAssetSourceTemplateTid}"]`)
+        : svgRoot.querySelector(`[data-asset="${selected.assetNumber}"]`);
+
+      if (existingAssetReplacementPlaceholderId) {
+        const ph = placeholderAssets.find(p => p.id === existingAssetReplacementPlaceholderId);
+        if (ph) updateAssetParent(selected.assetNumber, ph.parentAssetNumber, false, { flashEl: flashTarget });
+        const phChildren = placeholderChildrenMap.get(existingAssetReplacementPlaceholderId) || [];
+        phChildren.forEach(childNum => updateAssetParent(childNum, selected.assetNumber));
+        placeholderChildrenMap.delete(existingAssetReplacementPlaceholderId);
+        removePlaceholderAsset(existingAssetReplacementPlaceholderId, { offerUndo: false });
+      } else if (targetIsPlaceholder) {
+        assignAssetToPlaceholder(selected.assetNumber, getPlaceholderIdFromRef(existingAssetTargetParentNumber), { flashEl: flashTarget });
+      } else {
+        updateAssetParent(selected.assetNumber, existingAssetTargetParentNumber, false, { flashEl: flashTarget });
+      }
+      closeExistingAssetSelectModal();
+    })
+  ));
 }
-function openExistingAssetSelectModal(parentNum,groups,{allowAssigned=false,replacePlaceholderId=null}={}){existingAssetTargetParentNumber=parentNum;existingAssetReplacementPlaceholderId=replacePlaceholderId;existingAssetCandidates=getCandidateAssetsForGroups(groups,parentNum,{allowAssigned});if(existingAssetSelectTitle)existingAssetSelectTitle.textContent=replacePlaceholderId?`Replace placeholder for ${parentNum}`:`Link existing asset for ${parentNum}`;if(existingAssetSearch)existingAssetSearch.value="";updateExistingItemFilter(existingAssetCandidates);if(existingAssetItemFilter)existingAssetItemFilter.value="all";renderExistingList();openModal(existingAssetSelectModal);}
-function closeExistingAssetSelectModal(){closeModal(existingAssetSelectModal);existingAssetCandidates=[];existingAssetTargetParentNumber=null;existingAssetReplacementPlaceholderId=null;}
+function openExistingAssetSelectModal(parentNum,groups,{allowAssigned=false,replacePlaceholderId=null,sourceTemplateTid=null}={}){existingAssetTargetParentNumber=parentNum;existingAssetReplacementPlaceholderId=replacePlaceholderId;existingAssetSourceTemplateTid=sourceTemplateTid;existingAssetCandidates=getCandidateAssetsForGroups(groups,parentNum,{allowAssigned});if(existingAssetSelectTitle)existingAssetSelectTitle.textContent=replacePlaceholderId?`Replace placeholder for ${parentNum}`:`Link existing asset for ${parentNum}`;if(existingAssetSearch)existingAssetSearch.value="";updateExistingItemFilter(existingAssetCandidates);if(existingAssetItemFilter)existingAssetItemFilter.value="all";renderExistingList();openModal(existingAssetSelectModal);}
+function closeExistingAssetSelectModal(){closeModal(existingAssetSelectModal);existingAssetCandidates=[];existingAssetTargetParentNumber=null;existingAssetReplacementPlaceholderId=null;existingAssetSourceTemplateTid=null;}
 function renderOrphanList(){orphanParentSelectList.innerHTML="";const q=(orphanParentSearch?.value||"").toLowerCase();const filtered=orphanParentCandidates.filter(a=>{if(!q)return true;return`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase().includes(q);});if(!filtered.length){const p=document.createElement("p");p.className="modal-empty";p.textContent="No matching assets.";orphanParentSelectList.appendChild(p);return;}filtered.forEach(a=>orphanParentSelectList.appendChild(buildAssetOptionButton(a,selected=>{if(orphanTargetAssetNumber)updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);closeOrphanParentSelectModal();})));}
 function openOrphanParentSelectModal(num){orphanTargetAssetNumber=num;if(orphanParentSelectTitle)orphanParentSelectTitle.textContent=`Assign new parent for ${num}`;orphanParentCandidates=getParentCandidates(num);if(orphanParentSearch)orphanParentSearch.value="";renderOrphanList();openModal(orphanParentSelectModal);}
 function closeOrphanParentSelectModal(){closeModal(orphanParentSelectModal);orphanParentCandidates=[];orphanTargetAssetNumber=null;}
@@ -1253,12 +1478,11 @@ existingAssetSelectCancel.addEventListener("click",closeExistingAssetSelectModal
 existingAssetSelectModal.addEventListener("click",e=>{if(e.target===existingAssetSelectModal||e.target.classList.contains("modal-backdrop"))closeExistingAssetSelectModal();});
 existingAssetSearch.addEventListener("input",renderExistingList);
 existingAssetItemFilter.addEventListener("change",renderExistingList);
-if(missingSlotActionCancel)missingSlotActionCancel.addEventListener("click",closeMissingSlotActionModal);
-if(missingSlotActionModal)missingSlotActionModal.addEventListener("click",e=>{if(e.target===missingSlotActionModal||e.target.classList.contains("modal-backdrop"))closeMissingSlotActionModal();});
+if(missingSlotActionCancel)missingSlotActionCancel.addEventListener("click",dismissSlotBar);
 orphanParentSelectCancel.addEventListener("click",closeOrphanParentSelectModal);
 orphanParentSelectModal.addEventListener("click",e=>{if(e.target===orphanParentSelectModal||e.target.classList.contains("modal-backdrop"))closeOrphanParentSelectModal();});
 orphanParentSearch.addEventListener("input",renderOrphanList);
-document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;[parentSelectModal,placeholderSelectModal,existingAssetSelectModal,missingSlotActionModal,orphanParentSelectModal].forEach(m=>{if(m&&!m.classList.contains("hidden"))closeModal(m);});});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;dismissSlotBar();[parentSelectModal,placeholderSelectModal,existingAssetSelectModal,orphanParentSelectModal].forEach(m=>{if(m&&!m.classList.contains("hidden"))closeModal(m);});});
 
 // ── Init ──────────────────────────────────────────────────────────────
 loadReferenceTrees();
