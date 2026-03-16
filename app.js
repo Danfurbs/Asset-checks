@@ -59,6 +59,10 @@ const existingAssetSelectTitle  = document.getElementById("existingAssetSelectTi
 const existingAssetSelectCancel = document.getElementById("existingAssetSelectCancel");
 const existingAssetSearch       = document.getElementById("existingAssetSearch");
 const existingAssetItemFilter   = document.getElementById("existingAssetItemFilter");
+const missingSlotActionModal    = document.getElementById("missingSlotActionModal");
+const missingSlotActionTitle    = document.getElementById("missingSlotActionTitle");
+const missingSlotActionList     = document.getElementById("missingSlotActionList");
+const missingSlotActionCancel   = document.getElementById("missingSlotActionCancel");
 const orphanParentSelectModal   = document.getElementById("orphanParentSelectModal");
 const orphanParentSelectList    = document.getElementById("orphanParentSelectList");
 const orphanParentSelectTitle   = document.getElementById("orphanParentSelectTitle");
@@ -227,14 +231,14 @@ function layoutTree(rootId, cm) {
 
 // ── Template tree builder ─────────────────────────────────────────────
 let tplCounter=0;
-function buildTemplateNode(refNode, assetId) {
+function buildTemplateNode(refNode, assetId, parentAssetId=null) {
   const codes=(refNode.nameCodes||[]).map(c=>c.toUpperCase());
-  const node={tid:`t${tplCounter++}`, refNode, assetId:assetId||null, codes, children:[]};
+  const node={tid:`t${tplCounter++}`, refNode, assetId:assetId||null, parentAssetId:parentAssetId||null, codes, children:[]};
   const childIds=assetId?(childrenMap.get(assetId)||[]):[];
   (refNode.children||[]).forEach(refChild=>{
     const childCodes=(refChild.nameCodes||[]).map(c=>c.toUpperCase());
     const matched=childIds.find(cid=>childCodes.includes(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc)));
-    node.children.push(buildTemplateNode(refChild,matched||null));
+    node.children.push(buildTemplateNode(refChild,matched||null,assetId||null));
   });
   return node;
 }
@@ -298,6 +302,13 @@ function makeGhostCard(refNode, x, y) {
   g.appendChild(Object.assign(svgEl("text",{x:62,y:20,"font-size":10,"font-weight":700,fill:text,"dominant-baseline":"middle"}),{textContent:"Missing"}));
   g.appendChild(Object.assign(svgEl("text",{x:8,y:42,"font-size":10,fill:text}),{textContent:(refNode.title||"").slice(0,24)}));
   g.appendChild(Object.assign(svgEl("text",{x:8,y:68,"font-size":9,fill:border,"font-weight":600}),{textContent:optional?"Optional":"Required"}));
+  return g;
+}
+
+function makeGhostCardEditable(refNode,x,y){
+  const g=makeGhostCard(refNode,x,y);
+  g.classList.add("ghost-node-editable");
+  g.setAttribute("aria-label",`Add missing ${(refNode.title||"asset").trim()||"asset"}`);
   return g;
 }
 
@@ -396,7 +407,10 @@ function renderTemplateMode(rootId) {
       });
       card.addEventListener("click",()=>selectAsset(n.assetId));
     } else {
-      card=makeGhostCard(n.refNode,p.x,p.y);
+      card=makeGhostCardEditable(n.refNode,p.x,p.y);
+      if(n.parentAssetId){
+        card.addEventListener("click",()=>openMissingSlotActionModal(n));
+      }
     }
     nodes.appendChild(card);
     n.children.forEach(walk);
@@ -451,7 +465,7 @@ function renderSideBySide(rootId) {
 
     tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
     const te=svgEl("g"), tn=svgEl("g");
-    function walkT(n){ const p=tPos.get(n.tid); if(!p) return; n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId)); }); const asset=n.assetId?assetMap.get(n.assetId):null; let card=asset?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)}):makeGhostCard(n.refNode,p.x,p.y); if(asset){card.addEventListener("click",()=>selectAsset(n.assetId));} tn.appendChild(card); n.children.forEach(walkT); }
+    function walkT(n){ const p=tPos.get(n.tid); if(!p) return; n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId)); }); const asset=n.assetId?assetMap.get(n.assetId):null; let card=asset?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)}):makeGhostCardEditable(n.refNode,p.x,p.y); if(asset){card.addEventListener("click",()=>selectAsset(n.assetId));} else if(n.parentAssetId){card.addEventListener("click",()=>openMissingSlotActionModal(n));} tn.appendChild(card); n.children.forEach(walkT); }
     walkT(tmpl);
     // label
     const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":0,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
@@ -864,6 +878,11 @@ function getCandidateAssetsForGroups(groups,parentNum,{allowAssigned=false}={}) 
 function getUnassignedAssetsForGroups(groups,parentNum){return getCandidateAssetsForGroups(groups,parentNum,{allowAssigned:false});}
 function getParentCandidates(num){return assets.filter(a=>a&&a.assetNumber!==num&&!isDescendant(num,a.assetNumber)&&!isObsolete(a)).sort((a,b)=>a.assetNumber.localeCompare(b.assetNumber));}
 function buildPlaceholderOptions(groups){const opts=[];groups.forEach(g=>{const codes=Array.from(g.codes).sort();codes.forEach(code=>opts.push({code,groupLabel:codes.join(" or ")}));});return opts;}
+function getTemplateNodeGroups(node){
+  const codes=(node?.codes||[]).filter(Boolean);
+  if(!codes.length) return [];
+  return [{codes:new Set(codes),optional:Boolean(node?.refNode?.optional)}];
+}
 function buildAssetOptionButton(asset,onSelect){
   const btn=document.createElement("button");btn.type="button";btn.className="modal-option";
   const t=document.createElement("span");t.className="modal-option-title";t.textContent=asset.assetNumber;btn.appendChild(t);
@@ -877,6 +896,36 @@ function openPlaceholderSelectModal(parentNum,groups){
   buildPlaceholderOptions(groups).forEach(opt=>{const btn=document.createElement("button");btn.type="button";btn.className="modal-option";btn.textContent=opt.code;const s=document.createElement("small");s.textContent=`Group: ${opt.groupLabel}`;btn.appendChild(s);btn.addEventListener("click",()=>{addPlaceholderAsset(parentNum,opt.code);closeModal(placeholderSelectModal);});placeholderSelectList.appendChild(btn);});
   openModal(placeholderSelectModal);
 }
+function openMissingSlotActionModal(node){
+  const parentNum=node?.parentAssetId;
+  if(!parentNum) return;
+  const groups=getTemplateNodeGroups(node);
+  if(!groups.length) return;
+  if(missingSlotActionTitle){
+    const label=node.refNode?.title||Array.from(groups[0].codes).join("/");
+    missingSlotActionTitle.textContent=`Resolve missing ${label}`;
+  }
+  missingSlotActionList.innerHTML="";
+  const cands=getUnassignedAssetsForGroups(groups,parentNum);
+
+  const linkBtn=document.createElement("button");
+  linkBtn.type="button";
+  linkBtn.className="modal-option";
+  linkBtn.innerHTML=`Link existing unmatched asset<small>${cands.length?`${cands.length} candidate${cands.length===1?"":"s"} available`:"No unmatched candidate available"}</small>`;
+  linkBtn.disabled=!cands.length;
+  linkBtn.addEventListener("click",()=>{openExistingAssetSelectModal(parentNum,groups);closeMissingSlotActionModal();});
+  missingSlotActionList.appendChild(linkBtn);
+
+  const addBtn=document.createElement("button");
+  addBtn.type="button";
+  addBtn.className="modal-option";
+  addBtn.innerHTML='Add placeholder<small>Create a temporary asset for this required type.</small>';
+  addBtn.addEventListener("click",()=>{openPlaceholderSelectModal(parentNum,groups);closeMissingSlotActionModal();});
+  missingSlotActionList.appendChild(addBtn);
+
+  openModal(missingSlotActionModal);
+}
+function closeMissingSlotActionModal(){closeModal(missingSlotActionModal);}
 function updateExistingItemFilter(cands){if(!existingAssetItemFilter)return;const codes=new Set();cands.forEach(a=>{const c=extractNameCode(a.itemNameCodeDesc);if(c)codes.add(c);});existingAssetItemFilter.innerHTML="";const all=document.createElement("option");all.value="all";all.textContent="All item codes";existingAssetItemFilter.appendChild(all);Array.from(codes).sort().forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;existingAssetItemFilter.appendChild(o);});}
 function renderExistingList(){existingAssetSelectList.innerHTML="";const q=(existingAssetSearch?.value||"").toLowerCase();const code=existingAssetItemFilter?.value||"all";const filtered=existingAssetCandidates.filter(a=>{const label=`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase();if(q&&!label.includes(q))return false;if(code!=="all"&&extractNameCode(a.itemNameCodeDesc)!==code)return false;return true;});if(!filtered.length){const p=document.createElement("p");p.className="modal-empty";p.textContent="No matching assets found.";existingAssetSelectList.appendChild(p);return;}filtered.forEach(a=>existingAssetSelectList.appendChild(buildAssetOptionButton(a,selected=>{updateAssetParent(selected.assetNumber,existingAssetTargetParentNumber);if(existingAssetReplacementPlaceholderId)removePlaceholderAsset(existingAssetReplacementPlaceholderId,{offerUndo:false});closeExistingAssetSelectModal();})));}
 function openExistingAssetSelectModal(parentNum,groups,{allowAssigned=false,replacePlaceholderId=null}={}){existingAssetTargetParentNumber=parentNum;existingAssetReplacementPlaceholderId=replacePlaceholderId;existingAssetCandidates=getCandidateAssetsForGroups(groups,parentNum,{allowAssigned});if(existingAssetSelectTitle)existingAssetSelectTitle.textContent=replacePlaceholderId?`Replace placeholder for ${parentNum}`:`Link existing asset for ${parentNum}`;if(existingAssetSearch)existingAssetSearch.value="";updateExistingItemFilter(existingAssetCandidates);if(existingAssetItemFilter)existingAssetItemFilter.value="all";renderExistingList();openModal(existingAssetSelectModal);}
@@ -925,10 +974,12 @@ existingAssetSelectCancel.addEventListener("click",closeExistingAssetSelectModal
 existingAssetSelectModal.addEventListener("click",e=>{if(e.target===existingAssetSelectModal||e.target.classList.contains("modal-backdrop"))closeExistingAssetSelectModal();});
 existingAssetSearch.addEventListener("input",renderExistingList);
 existingAssetItemFilter.addEventListener("change",renderExistingList);
+if(missingSlotActionCancel)missingSlotActionCancel.addEventListener("click",closeMissingSlotActionModal);
+if(missingSlotActionModal)missingSlotActionModal.addEventListener("click",e=>{if(e.target===missingSlotActionModal||e.target.classList.contains("modal-backdrop"))closeMissingSlotActionModal();});
 orphanParentSelectCancel.addEventListener("click",closeOrphanParentSelectModal);
 orphanParentSelectModal.addEventListener("click",e=>{if(e.target===orphanParentSelectModal||e.target.classList.contains("modal-backdrop"))closeOrphanParentSelectModal();});
 orphanParentSearch.addEventListener("input",renderOrphanList);
-document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;[parentSelectModal,placeholderSelectModal,existingAssetSelectModal,orphanParentSelectModal].forEach(m=>{if(!m.classList.contains("hidden"))closeModal(m);});});
+document.addEventListener("keydown",e=>{if(e.key!=="Escape")return;[parentSelectModal,placeholderSelectModal,existingAssetSelectModal,missingSlotActionModal,orphanParentSelectModal].forEach(m=>{if(m&&!m.classList.contains("hidden"))closeModal(m);});});
 
 // ── Init ──────────────────────────────────────────────────────────────
 loadReferenceTrees();
