@@ -231,16 +231,58 @@ function layoutTree(rootId, cm) {
 
 // ── Template tree builder ─────────────────────────────────────────────
 let tplCounter=0;
-function buildTemplateNode(refNode, assetId, parentAssetId=null) {
+function buildTemplateNode(refNode, match, parentAssetId=null, ctx={}) {
   const codes=(refNode.nameCodes||[]).map(c=>c.toUpperCase());
-  const node={tid:`t${tplCounter++}`, refNode, assetId:assetId||null, parentAssetId:parentAssetId||null, codes, children:[]};
-  const childIds=assetId?(childrenMap.get(assetId)||[]):[];
+  const node={
+    tid:`t${tplCounter++}`,
+    refNode,
+    assetId:match?.assetId||null,
+    placeholderId:match?.placeholderId||null,
+    parentAssetId:parentAssetId||null,
+    codes,
+    children:[]
+  };
+  const closestAsset=node.assetId||parentAssetId||null;
   (refNode.children||[]).forEach(refChild=>{
     const childCodes=(refChild.nameCodes||[]).map(c=>c.toUpperCase());
-    const matched=childIds.find(cid=>childCodes.includes(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc)));
-    node.children.push(buildTemplateNode(refChild,matched||null,assetId||null));
+    const childMatch=findTemplateMatch(childCodes,closestAsset,ctx);
+    node.children.push(buildTemplateNode(refChild,childMatch,closestAsset,ctx));
   });
   return node;
+}
+
+function findTemplateMatch(codes, parentAssetId, ctx) {
+  if(!codes.length) return null;
+  const {usedAssetIds=new Set(),usedPlaceholderIds=new Set(),scopeRootId=null}=ctx;
+  const matchesCode=v=>codes.includes(v);
+
+  const directAsset=(childrenMap.get(parentAssetId)||[]).find(cid=>{
+    if(usedAssetIds.has(cid)) return false;
+    return matchesCode(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc));
+  });
+  if(directAsset){ usedAssetIds.add(directAsset); return {assetId:directAsset}; }
+
+  const directPlaceholder=(placeholderMap.get(parentAssetId)||[]).find(ph=>!usedPlaceholderIds.has(ph.id)&&matchesCode(ph.itemNameCode));
+  if(directPlaceholder){ usedPlaceholderIds.add(directPlaceholder.id); return {placeholderId:directPlaceholder.id}; }
+
+  const fallbackRoot=parentAssetId||scopeRootId;
+  if(!fallbackRoot) return null;
+
+  const descendants=[];
+  (function walk(id){ (childrenMap.get(id)||[]).forEach(cid=>{ descendants.push(cid); walk(cid); }); })(fallbackRoot);
+
+  const fallbackAsset=descendants.find(cid=>{
+    if(usedAssetIds.has(cid)) return false;
+    return matchesCode(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc));
+  });
+  if(fallbackAsset){ usedAssetIds.add(fallbackAsset); return {assetId:fallbackAsset}; }
+
+  const fallbackPlaceholder=descendants
+    .flatMap(id=>placeholderMap.get(id)||[])
+    .find(ph=>!usedPlaceholderIds.has(ph.id)&&matchesCode(ph.itemNameCode));
+  if(fallbackPlaceholder){ usedPlaceholderIds.add(fallbackPlaceholder.id); return {placeholderId:fallbackPlaceholder.id}; }
+
+  return null;
 }
 function layoutTemplateTree(node) {
   const cm=new Map(); const widths=new Map();
@@ -309,6 +351,14 @@ function makeGhostCardEditable(refNode,x,y){
   const g=makeGhostCard(refNode,x,y);
   g.classList.add("ghost-node-editable");
   g.setAttribute("aria-label",`Add missing ${(refNode.title||"asset").trim()||"asset"}`);
+  return g;
+}
+
+function makePlaceholderCardEditable(placeholder,x,y){
+  const ref={nameCodes:[placeholder.itemNameCode],title:"Placeholder"};
+  const g=makeGhostCard(ref,x,y);
+  g.classList.add("ghost-node-editable");
+  g.setAttribute("aria-label",`Manage placeholder ${placeholder.itemNameCode}`);
   return g;
 }
 
@@ -385,7 +435,7 @@ function renderTemplateMode(rootId) {
   tplCounter=0;
   const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
   const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&!a.parentAssetNumber&&subtreeIds(rootId).has(a.assetNumber));
-  const tmpl=buildTemplateNode(tree.root,rootAsset?.assetNumber||null);
+  const tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
   const pos=layoutTemplateTree(tmpl);
 
   const edges=svgEl("g"), nodes=svgEl("g");
@@ -395,9 +445,10 @@ function renderTemplateMode(rootId) {
     const p=pos.get(n.tid); if(!p) return;
     n.children.forEach(c=>{
       const cp=pos.get(c.tid); if(!cp) return;
-      edges.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId));
+      edges.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId));
     });
     const asset=n.assetId?assetMap.get(n.assetId):null;
+    const placeholder=n.placeholderId?placeholderAssets.find(p=>p.id===n.placeholderId):null;
     let card;
     if(asset){
       card=makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{
@@ -406,6 +457,9 @@ function renderTemplateMode(rootId) {
         isOrph:isOrphaned(asset)
       });
       card.addEventListener("click",()=>selectAsset(n.assetId));
+    } else if(placeholder){
+      card=makePlaceholderCardEditable(placeholder,p.x,p.y);
+      card.addEventListener("click",()=>openMissingSlotActionModal(n));
     } else {
       card=makeGhostCardEditable(n.refNode,p.x,p.y);
       if(n.parentAssetId){
@@ -456,7 +510,7 @@ function renderSideBySide(rootId) {
   if(tree?.root){
     const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
     const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&subtreeIds(rootId).has(a.assetNumber));
-    const tmpl=buildTemplateNode(tree.root,rootAsset?.assetNumber||null);
+    const tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
     const tPos=layoutTemplateTree(tmpl);
     let tMinX=Infinity,tMaxX=-Infinity;
     tPos.forEach(({x})=>{tMinX=Math.min(tMinX,x-NW/2);tMaxX=Math.max(tMaxX,x+NW/2);});
@@ -465,7 +519,7 @@ function renderSideBySide(rootId) {
 
     tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
     const te=svgEl("g"), tn=svgEl("g");
-    function walkT(n){ const p=tPos.get(n.tid); if(!p) return; n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId)); }); const asset=n.assetId?assetMap.get(n.assetId):null; let card=asset?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)}):makeGhostCardEditable(n.refNode,p.x,p.y); if(asset){card.addEventListener("click",()=>selectAsset(n.assetId));} else if(n.parentAssetId){card.addEventListener("click",()=>openMissingSlotActionModal(n));} tn.appendChild(card); n.children.forEach(walkT); }
+    function walkT(n){ const p=tPos.get(n.tid); if(!p) return; n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); }); const asset=n.assetId?assetMap.get(n.assetId):null; const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null; let card=asset?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)}):placeholder?makePlaceholderCardEditable(placeholder,p.x,p.y):makeGhostCardEditable(n.refNode,p.x,p.y); if(asset){card.addEventListener("click",()=>selectAsset(n.assetId));} else if(n.parentAssetId){card.addEventListener("click",()=>openMissingSlotActionModal(n));} tn.appendChild(card); n.children.forEach(walkT); }
     walkT(tmpl);
     // label
     const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":0,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
@@ -901,9 +955,10 @@ function openMissingSlotActionModal(node){
   if(!parentNum) return;
   const groups=getTemplateNodeGroups(node);
   if(!groups.length) return;
+  const placeholder=node?.placeholderId?placeholderAssets.find(p=>p.id===node.placeholderId):null;
   if(missingSlotActionTitle){
     const label=node.refNode?.title||Array.from(groups[0].codes).join("/");
-    missingSlotActionTitle.textContent=`Resolve missing ${label}`;
+    missingSlotActionTitle.textContent=placeholder?`Manage placeholder ${placeholder.itemNameCode}`:`Resolve missing ${label}`;
   }
   missingSlotActionList.innerHTML="";
   const cands=getUnassignedAssetsForGroups(groups,parentNum);
@@ -911,15 +966,24 @@ function openMissingSlotActionModal(node){
   const linkBtn=document.createElement("button");
   linkBtn.type="button";
   linkBtn.className="modal-option";
-  linkBtn.innerHTML=`Link existing unmatched asset<small>${cands.length?`${cands.length} candidate${cands.length===1?"":"s"} available`:"No unmatched candidate available"}</small>`;
+  linkBtn.innerHTML=`${placeholder?"Replace with":"Link"} existing unmatched asset<small>${cands.length?`${cands.length} candidate${cands.length===1?"":"s"} available`:"No unmatched candidate available"}</small>`;
   linkBtn.disabled=!cands.length;
-  linkBtn.addEventListener("click",()=>{openExistingAssetSelectModal(parentNum,groups);closeMissingSlotActionModal();});
+  linkBtn.addEventListener("click",()=>{openExistingAssetSelectModal(parentNum,groups,{replacePlaceholderId:placeholder?.id||null});closeMissingSlotActionModal();});
   missingSlotActionList.appendChild(linkBtn);
+
+  if(placeholder){
+    const rmBtn=document.createElement("button");
+    rmBtn.type="button";
+    rmBtn.className="modal-option";
+    rmBtn.innerHTML='Remove placeholder<small>Delete this placeholder from the tree.</small>';
+    rmBtn.addEventListener("click",()=>{removePlaceholderAsset(placeholder.id,{offerUndo:true});closeMissingSlotActionModal();});
+    missingSlotActionList.appendChild(rmBtn);
+  }
 
   const addBtn=document.createElement("button");
   addBtn.type="button";
   addBtn.className="modal-option";
-  addBtn.innerHTML='Add placeholder<small>Create a temporary asset for this required type.</small>';
+  addBtn.innerHTML=`${placeholder?"Add another placeholder":"Add placeholder"}<small>Create a temporary asset for this required type.</small>`;
   addBtn.addEventListener("click",()=>{openPlaceholderSelectModal(parentNum,groups);closeMissingSlotActionModal();});
   missingSlotActionList.appendChild(addBtn);
 
