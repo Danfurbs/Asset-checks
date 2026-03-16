@@ -9,7 +9,7 @@
   <body>
     <header class="app-header">
       <div class="header-brand">
-        <h1>Asset Hierarchy Tool</h1>
+        <h1>Asset Family Tree Viewer</h1>
       </div>
       <div class="header-actions">
         <label class="file-upload" title="Upload an Excel or CSV asset export">
@@ -26,31 +26,25 @@
           <h2>Assets</h2>
           <span id="listStatus" class="list-count"></span>
         </div>
-
         <div class="left-search">
           <input type="search" id="filterInput" placeholder="Search…" aria-label="Filter assets" />
         </div>
-
-        <details class="filter-drawer" id="filterDrawer">
+        <details class="filter-drawer">
           <summary>Filters</summary>
           <div class="filter-fields">
-            <select id="groupFilter" aria-label="Filter by reference group">
-              <option value="all">All assets</option>
-              <option value="sc-group">Selected Reference Tree</option>
-            </select>
-            <select id="itemNameFilter" aria-label="Filter by item name"><option value="all">All Item Name Codes</option></select>
-            <select id="elrFilter" aria-label="Filter by ELR"><option value="all">All ELRs</option></select>
-            <select id="assetClassFilter" aria-label="Filter by asset class"><option value="all">All Asset Classes</option></select>
-            <select id="statusFilter" aria-label="Filter by status"><option value="all">All Statuses</option></select>
+            <select id="groupFilter"><option value="all">All assets</option><option value="sc-group">Selected Reference Tree</option></select>
+            <select id="itemNameFilter"><option value="all">All Item Name Codes</option></select>
+            <select id="elrFilter"><option value="all">All ELRs</option></select>
+            <select id="assetClassFilter"><option value="all">All Asset Classes</option></select>
+            <select id="statusFilter"><option value="all">All Statuses</option></select>
             <label class="filter-check"><input type="checkbox" id="hideObsoleteToggle" /> Hide obsolete</label>
             <label class="filter-check"><input type="checkbox" id="errorOnlyToggle" /> Errors only</label>
           </div>
         </details>
-
         <ul id="assetList" class="asset-list"></ul>
       </aside>
 
-      <!-- CENTRE: triage or focus view -->
+      <!-- CENTRE: triage or tree canvas -->
       <section class="panel-centre" id="centrePanel">
 
         <!-- TRIAGE VIEW -->
@@ -63,52 +57,72 @@
           <div id="triageIssueList" class="triage-issue-list"></div>
         </div>
 
-        <!-- FOCUS VIEW -->
-        <div id="focusView" class="view-focus hidden">
+        <!-- TREE CANVAS VIEW -->
+        <div id="treeCanvasView" class="view-tree-canvas hidden">
+          <!-- Toolbar -->
+          <div class="canvas-toolbar">
+            <button type="button" id="backToTriage" class="btn-ghost btn-sm">← Overview</button>
 
-          <!-- nav bar -->
-          <div class="focus-nav">
-            <button type="button" id="backToTriage" class="btn-ghost">← Overview</button>
-            <div class="focus-nav-arrows">
+            <div class="toolbar-group">
+              <label class="toolbar-label">Tree</label>
+              <select id="referenceTreeSelect"></select>
+            </div>
+
+            <div class="view-mode-toggle" id="viewModeToggle">
+              <button type="button" class="mode-btn active" data-mode="tree">Tree</button>
+              <button type="button" class="mode-btn" data-mode="template">Template</button>
+              <button type="button" class="mode-btn" data-mode="sidebyside">Side by side</button>
+            </div>
+
+            <button type="button" id="assocToggle" class="btn-assoc">⤢ Associations</button>
+
+            <div class="toolbar-nav">
               <button type="button" id="prevIssue" class="btn-icon" title="Previous issue">‹</button>
               <span id="issuePosition" class="issue-position"></span>
               <button type="button" id="nextIssue" class="btn-icon" title="Next issue">›</button>
             </div>
-            <div id="treeSelectorWrap" class="tree-selector-wrap">
-              <label for="referenceTreeSelect">Tree</label>
-              <select id="referenceTreeSelect"></select>
-            </div>
+
+            <button type="button" id="fitBtn" class="btn-ghost btn-sm" style="margin-left:auto">⊡ Fit</button>
           </div>
 
-          <!-- breadcrumb spine -->
-          <div id="ancestorSpine" class="ancestor-spine"></div>
-
-          <!-- main focus content -->
-          <div class="focus-body">
-            <!-- selected asset card + children -->
-            <div class="focus-main">
-              <div id="focusCard" class="focus-card"></div>
-              <div id="focusChildrenWrap" class="focus-children-wrap">
-                <div id="focusChildren" class="focus-children"></div>
-                <div id="focusChildrenControls" class="focus-children-controls"></div>
-              </div>
+          <!-- SVG canvas -->
+          <div class="canvas-wrap" id="canvasWrap">
+            <svg id="treeSvg" width="100%" height="100%">
+              <defs>
+                <filter id="nodeShadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="3" stdDeviation="6" flood-color="#6366f1" flood-opacity="0.22"/>
+                </filter>
+                <filter id="selectedShadow" x="-30%" y="-30%" width="160%" height="160%">
+                  <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#0ea5e9" flood-opacity="0.35"/>
+                </filter>
+              </defs>
+              <g id="svgRoot"></g>
+            </svg>
+            <!-- zoom controls -->
+            <div class="zoom-controls">
+              <button type="button" id="zoomIn">+</button>
+              <span id="zoomLabel">100%</span>
+              <button type="button" id="zoomOut">−</button>
             </div>
-
-            <!-- reference template checklist -->
-            <div class="focus-template" id="focusTemplate">
-              <div class="template-panel-header">
-                <h3>Reference template</h3>
-                <span id="templateSummary" class="template-summary"></span>
-              </div>
-              <div id="templateChecklist" class="template-checklist"></div>
+            <!-- legend -->
+            <div class="canvas-legend">
+              <span class="legend-item"><span class="legend-line solid" style="border-color:#6366f1"></span>Active</span>
+              <span class="legend-item"><span class="legend-line solid" style="border-color:#f87171"></span>Obsolete</span>
+              <span class="legend-item"><span class="legend-line dashed" style="border-color:#fbbf24"></span>Missing slot</span>
+              <span class="legend-item"><span class="legend-line dashed" style="border-color:#f59e0b"></span>Association</span>
             </div>
           </div>
-
-          <!-- warnings for this asset -->
-          <div id="focusWarnings" class="focus-warnings"></div>
         </div>
-
       </section>
+
+      <!-- RIGHT: detail panel (slides in) -->
+      <aside class="panel-detail" id="detailPanel">
+        <div class="detail-header">
+          <span id="detailAssetId" class="detail-asset-id"></span>
+          <button type="button" id="closeDetail" class="btn-icon">✕</button>
+        </div>
+        <div id="detailBody" class="detail-body"></div>
+      </aside>
     </main>
 
     <!-- PENDING CHANGES TRAY -->
@@ -152,8 +166,8 @@
         <h3 id="existingAssetSelectTitle">Link existing asset</h3>
         <p class="modal-description">Choose an unassigned asset to add as a child.</p>
         <div class="modal-filters">
-          <input type="search" id="existingAssetSearch" placeholder="Search…" aria-label="Search assets" />
-          <select id="existingAssetItemFilter" aria-label="Filter by item code"><option value="all">All item codes</option></select>
+          <input type="search" id="existingAssetSearch" placeholder="Search…" />
+          <select id="existingAssetItemFilter"><option value="all">All item codes</option></select>
         </div>
         <div id="existingAssetSelectList" class="modal-list"></div>
         <div class="modal-actions"><button type="button" id="existingAssetSelectCancel" class="btn-ghost">Cancel</button></div>
@@ -166,7 +180,7 @@
         <h3 id="orphanParentSelectTitle">Assign new parent</h3>
         <p class="modal-description">Select a replacement parent for this orphaned asset.</p>
         <div class="modal-filters">
-          <input type="search" id="orphanParentSearch" placeholder="Search…" aria-label="Search parents" />
+          <input type="search" id="orphanParentSearch" placeholder="Search…" />
         </div>
         <div id="orphanParentSelectList" class="modal-list"></div>
         <div class="modal-actions"><button type="button" id="orphanParentSelectCancel" class="btn-ghost">Cancel</button></div>
