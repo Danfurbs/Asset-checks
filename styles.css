@@ -275,3 +275,8 @@ body { margin: 0; font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
 .ghost-node-editable { cursor: pointer; }
 .ghost-node-editable:hover rect:first-child { stroke: #f59e0b; stroke-width: 2; }
 .modal-option:disabled { opacity: .55; cursor: not-allowed; }
+
+.tree-node-g.placeholder-parented rect:first-child {
+  stroke: #06b6d4;
+  fill: #ecfeff;
+}
