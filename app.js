@@ -385,15 +385,22 @@ function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,
   return g;
 }
 
-function makeGhostCard(refNode, x, y) {
+function makeGhostCard(refNode, x, y, { variant="missing" }={}) {
   const codes=(refNode.nameCodes||[]).join("/");
   const optional=!!refNode.optional;
-  const bg=optional?"#f9fafb":"#fef3c7", border=optional?"#d1d5db":"#fcd34d", text=optional?"#6b7280":"#92400e";
+  const paletteByVariant={
+    missing:{ optionalBg:"#f9fafb", requiredBg:"#fef3c7", optionalBorder:"#d1d5db", requiredBorder:"#fcd34d", optionalText:"#6b7280", requiredText:"#92400e", title:"Missing" },
+    placeholder:{ optionalBg:"#f0f9ff", requiredBg:"#ecfeff", optionalBorder:"#7dd3fc", requiredBorder:"#22d3ee", optionalText:"#0369a1", requiredText:"#0e7490", title:"Placeholder" }
+  };
+  const palette=paletteByVariant[variant]||paletteByVariant.missing;
+  const bg=optional?palette.optionalBg:palette.requiredBg;
+  const border=optional?palette.optionalBorder:palette.requiredBorder;
+  const text=optional?palette.optionalText:palette.requiredText;
   const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:"tree-node-g"});
   g.appendChild(svgEl("rect",{width:NW,height:NH,rx:10,fill:bg,stroke:border,"stroke-width":1.5,"stroke-dasharray":optional?"6,3":"none"}));
   g.appendChild(svgEl("rect",{x:8,y:8,width:46,height:17,rx:8,fill:border,opacity:"0.25"}));
   g.appendChild(Object.assign(svgEl("text",{x:31,y:20,"text-anchor":"middle","font-size":9,"font-weight":700,fill:border,"dominant-baseline":"middle"}),{textContent:codes.slice(0,8)}));
-  g.appendChild(Object.assign(svgEl("text",{x:62,y:20,"font-size":10,"font-weight":700,fill:text,"dominant-baseline":"middle"}),{textContent:"Missing"}));
+  g.appendChild(Object.assign(svgEl("text",{x:62,y:20,"font-size":10,"font-weight":700,fill:text,"dominant-baseline":"middle"}),{textContent:palette.title}));
   g.appendChild(Object.assign(svgEl("text",{x:8,y:42,"font-size":10,fill:text}),{textContent:(refNode.title||"").slice(0,24)}));
   g.appendChild(Object.assign(svgEl("text",{x:8,y:68,"font-size":9,fill:border,"font-weight":600}),{textContent:optional?"Optional":"Required"}));
   return g;
@@ -408,7 +415,7 @@ function makeGhostCardEditable(refNode,x,y){
 
 function makePlaceholderCardEditable(placeholder,x,y){
   const ref={nameCodes:[placeholder.itemNameCode],title:"Placeholder"};
-  const g=makeGhostCard(ref,x,y);
+  const g=makeGhostCard(ref,x,y,{variant:"placeholder"});
   g.classList.add("ghost-node-editable");
   g.setAttribute("aria-label",`Manage placeholder ${placeholder.itemNameCode}`);
   return g;
@@ -590,16 +597,15 @@ function renderTemplateMode(rootId) {
 }
 
 function renderSideBySide(rootId) {
-  // left = template, right = real tree, offset by half the combined width
+  // left = template, right = real tree; keep a fixed gap around divider (x=0)
   tplCounter=0;
   const tree=getActiveReferenceTree();
   const realPos=layoutTree(rootId,childrenMap);
+  const SIDE_GAP=60;
 
   // measure real bounds
   let minX=Infinity,maxX=-Infinity;
   realPos.forEach(({x})=>{minX=Math.min(minX,x-NW/2);maxX=Math.max(maxX,x+NW/2);});
-  const realW=maxX-minX+80;
-  const SIDE_GAP=60;
 
   // template
   let tplG=null;
@@ -613,8 +619,7 @@ function renderSideBySide(rootId) {
     tPos=layoutTemplateTree(tmpl);
     let tMinX=Infinity,tMaxX=-Infinity;
     tPos.forEach(({x})=>{tMinX=Math.min(tMinX,x-NW/2);tMaxX=Math.max(tMaxX,x+NW/2);});
-    const tW=tMaxX-tMinX+80;
-    tOffX=-(tW/2+SIDE_GAP/2)-tMinX;
+    tOffX=(-SIDE_GAP/2)-tMaxX;
 
     tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
     const te=svgEl("g"), tn=svgEl("g");
@@ -647,7 +652,7 @@ function renderSideBySide(rootId) {
   }
 
   // real tree group
-  const rOffX=realW/2+SIDE_GAP/2-minX;
+  const rOffX=(SIDE_GAP/2)-minX;
   const realG=svgEl("g",{transform:`translate(${rOffX},0)`});
   const re=svgEl("g"), rn=svgEl("g");
   realPos.forEach(({x,y},id)=>{
