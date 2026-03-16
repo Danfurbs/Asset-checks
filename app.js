@@ -200,8 +200,26 @@ function isDescendant(num,pot) { if(!num||!pot) return false; const ch=childrenM
 function isPlaceholderRef(ref){return typeof ref==="string"&&ref.startsWith("__ph__");}
 function getPlaceholderIdFromRef(ref){return isPlaceholderRef(ref)?ref.slice(6):null;}
 function getPlaceholderByRef(ref){const id=getPlaceholderIdFromRef(ref);return id?placeholderAssets.find(ph=>ph.id===id)||null:null;}
+function getEffectiveParentNumber(parentRef){
+  if(!parentRef) return null;
+  if(!isPlaceholderRef(parentRef)) return parentRef;
+  return getPlaceholderByRef(parentRef)?.parentAssetNumber||null;
+}
 function getParentCodeByRef(ref){if(!ref)return null;if(isPlaceholderRef(ref))return getPlaceholderByRef(ref)?.itemNameCode||null;return extractNameCode(assetMap.get(ref)?.itemNameCodeDesc);}
 function getChildAssetIdsByParentRef(ref){if(!ref)return[];if(isPlaceholderRef(ref)){const id=getPlaceholderIdFromRef(ref);return id?(placeholderChildrenMap.get(id)||[]):[];}return childrenMap.get(ref)||[];}
+
+function removeChildLink(parentNum, childNum){
+  if(!parentNum||!childrenMap.has(parentNum)) return;
+  const next=(childrenMap.get(parentNum)||[]).filter(n=>n!==childNum);
+  next.length?childrenMap.set(parentNum,next):childrenMap.delete(parentNum);
+}
+
+function addChildLink(parentNum, childNum){
+  if(!parentNum||!childNum) return;
+  if(!childrenMap.has(parentNum)) childrenMap.set(parentNum,[]);
+  const current=childrenMap.get(parentNum);
+  if(!current.includes(childNum)) current.push(childNum);
+}
 
 function buildAncestorChain(num) {
   const chain=[]; let cur=assetMap.get(num); if(!cur) return chain;
@@ -1102,16 +1120,16 @@ function refreshAfterHierarchyChange(focusAssetNumber = selectedAssetNumber) {
 function updateAssetParent(num,newParent,isRevert=false,{ flashEl=null }={}) {
   const asset=assetMap.get(num);if(!asset||!newParent||num===newParent||isDescendant(num,newParent))return;
   const old=asset.parentAssetNumber||null;if(old===newParent)return;
+  const oldEffectiveParent=getEffectiveParentNumber(old);
   if(old?.startsWith("__ph__")){
     const oldPlaceholderId=old.slice(6);
     const existing=placeholderChildrenMap.get(oldPlaceholderId)||[];
     const filtered=existing.filter(c=>c!==num);
     filtered.length?placeholderChildrenMap.set(oldPlaceholderId,filtered):placeholderChildrenMap.delete(oldPlaceholderId);
   }
-  if(old&&childrenMap.has(old)){const s=childrenMap.get(old).filter(c=>c!==num);s.length?childrenMap.set(old,s):childrenMap.delete(old);}
+  removeChildLink(oldEffectiveParent,num);
   asset.parentAssetNumber=newParent;
-  if(!childrenMap.has(newParent))childrenMap.set(newParent,[]);
-  if(!childrenMap.get(newParent).includes(num))childrenMap.get(newParent).push(num);
+  addChildLink(newParent,num);
   if(isRevert||originalParentMap.get(num)===newParent)changedAssets.delete(num);else changedAssets.add(num);
   buildIssueList();updateChangesTray();renderAssetList();
   flashNodeSuccess(flashEl);
@@ -1136,6 +1154,7 @@ function removePlaceholderAsset(id,{offerUndo=false}={}) {
   const assignedChildren=placeholderChildrenMap.get(id)||[];
   assignedChildren.forEach(num=>{
     const child=assetMap.get(num);
+    if(removed?.parentAssetNumber) removeChildLink(removed.parentAssetNumber,num);
     if(child?.parentAssetNumber===`__ph__${id}`) child.parentAssetNumber=null;
     if(originalParentMap.get(num)===child?.parentAssetNumber) changedAssets.delete(num); else changedAssets.add(num);
   });
@@ -1149,11 +1168,9 @@ function assignAssetToPlaceholder(assetNumber, placeholderId,{ flashEl=null }={}
   const asset=assetMap.get(assetNumber);
   const placeholder=placeholderAssets.find(ph=>ph.id===placeholderId);
   if(!asset||!placeholder) return;
+  if(assetNumber===placeholder.parentAssetNumber||isDescendant(assetNumber,placeholder.parentAssetNumber)) return;
   const prevParent=asset.parentAssetNumber||null;
-  if(prevParent&&childrenMap.has(prevParent)){
-    const siblings=childrenMap.get(prevParent).filter(c=>c!==assetNumber);
-    siblings.length?childrenMap.set(prevParent,siblings):childrenMap.delete(prevParent);
-  }
+  removeChildLink(getEffectiveParentNumber(prevParent),assetNumber);
   if(prevParent?.startsWith("__ph__")){
     const prevPlaceholderId=prevParent.slice(6);
     const prevChildren=placeholderChildrenMap.get(prevPlaceholderId)||[];
@@ -1161,6 +1178,7 @@ function assignAssetToPlaceholder(assetNumber, placeholderId,{ flashEl=null }={}
     filtered.length?placeholderChildrenMap.set(prevPlaceholderId,filtered):placeholderChildrenMap.delete(prevPlaceholderId);
   }
   asset.parentAssetNumber=`__ph__${placeholderId}`;
+  addChildLink(placeholder.parentAssetNumber,assetNumber);
   const current=placeholderChildrenMap.get(placeholderId)||[];
   if(!current.includes(assetNumber)) placeholderChildrenMap.set(placeholderId,[...current,assetNumber]);
   if(originalParentMap.get(assetNumber)===asset.parentAssetNumber) changedAssets.delete(assetNumber); else changedAssets.add(assetNumber);
