@@ -78,6 +78,7 @@ let selectedAssetNumber = null;
 let originalParentMap = new Map(), changedAssets = new Set();
 let initialMismatchAssets = new Set();
 let placeholderAssets = [], placeholderMap = new Map(), placeholderCounter = 0;
+let placeholderChildrenMap = new Map();
 let lastRemovedPlaceholder = null, undoToastTimeoutId = null, undoToastHandler = null;
 let referenceTrees = [], referenceNameCodes = [], referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set(), referenceChildMap = new Map(), referenceAssociatedMap = new Map();
@@ -141,7 +142,7 @@ function findHeaderRow(rows,max=20) {
 // ── Build maps ────────────────────────────────────────────────────────
 function buildMaps(rows, headers) {
   assetMap=new Map(); childrenMap=new Map(); originalParentMap=new Map();
-  changedAssets=new Set(); placeholderAssets=[]; placeholderMap=new Map(); placeholderCounter=0;
+  changedAssets=new Set(); placeholderAssets=[]; placeholderMap=new Map(); placeholderChildrenMap=new Map(); placeholderCounter=0;
   const col=k=>findColumn(headers,COLUMN_ALIASES[k]);
   const ai=col("assetNumber"), pi=col("parentAssetNumber");
   if (ai===-1||pi===-1) throw new Error("Missing required columns.");
@@ -245,10 +246,28 @@ function buildTemplateNode(refNode, match, parentAssetId=null, ctx={}) {
   const closestAsset=node.assetId||parentAssetId||null;
   (refNode.children||[]).forEach(refChild=>{
     const childCodes=(refChild.nameCodes||[]).map(c=>c.toUpperCase());
-    const childMatch=findTemplateMatch(childCodes,closestAsset,ctx);
+    let childMatch=null;
+    if(node.placeholderId){
+      const phChildren=placeholderChildrenMap.get(node.placeholderId)||[];
+      const directPlaceholderChild=phChildren.find(cid=>{
+        if(ctx?.usedAssetIds?.has(cid)) return false;
+        return childCodes.includes(extractNameCode(assetMap.get(cid)?.itemNameCodeDesc));
+      });
+      if(directPlaceholderChild){
+        ctx?.usedAssetIds?.add(directPlaceholderChild);
+        childMatch={assetId:directPlaceholderChild};
+      }
+    }
+    if(!childMatch) childMatch=findTemplateMatch(childCodes,closestAsset,ctx);
     node.children.push(buildTemplateNode(refChild,childMatch,closestAsset,ctx));
   });
   return node;
+}
+
+function offsetPositions(pos, dx) {
+  const shifted=new Map();
+  pos.forEach(({x,y},id)=>shifted.set(id,{x:x+dx,y}));
+  return shifted;
 }
 
 function findTemplateMatch(codes, parentAssetId, ctx) {
@@ -305,7 +324,9 @@ function nodeColors(asset, selected) {
 
 function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,isOrph=false}={}) {
   const col=nodeColors(asset,selected);
-  const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:"tree-node-g",style:"cursor:pointer"});
+  const cls=["tree-node-g"];
+  if(asset?.parentAssetNumber?.startsWith("__ph__")) cls.push("placeholder-parented");
+  const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:cls.join(" "),style:"cursor:pointer"});
 
   // shadow + rect
   g.appendChild(svgEl("rect",{width:NW,height:NH,rx:10,fill:col.bg,stroke:col.border,"stroke-width":selected?2.5:1.5,filter:selected?"url(#selectedShadow)":"url(#nodeShadow)"}));
@@ -507,15 +528,18 @@ function renderSideBySide(rootId) {
 
   // template
   let tplG=null;
+  let tPos=null;
+  let tOffX=0;
   if(tree?.root){
+    tplCounter=0;
     const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
     const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&subtreeIds(rootId).has(a.assetNumber));
     const tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
-    const tPos=layoutTemplateTree(tmpl);
+    tPos=layoutTemplateTree(tmpl);
     let tMinX=Infinity,tMaxX=-Infinity;
     tPos.forEach(({x})=>{tMinX=Math.min(tMinX,x-NW/2);tMaxX=Math.max(tMaxX,x+NW/2);});
     const tW=tMaxX-tMinX+80;
-    const tOffX=-(tW/2+SIDE_GAP/2)-tMinX;
+    tOffX=-(tW/2+SIDE_GAP/2)-tMinX;
 
     tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
     const te=svgEl("g"), tn=svgEl("g");
@@ -549,11 +573,15 @@ function renderSideBySide(rootId) {
   svgRoot.appendChild(divider);
   svgRoot.appendChild(realG);
 
-  // fit using real positions as proxy
-  fitIfNeeded(realPos);
+  const combinedPos=offsetPositions(realPos,rOffX);
+  if(tPos){
+    offsetPositions(tPos,tOffX).forEach((value,key)=>combinedPos.set(`tpl-${key}`,value));
+  }
+  fitIfNeeded(combinedPos);
 }
 
 let hasFit=false;
+let lastRootId=null;
 function fitIfNeeded(pos) {
   if(hasFit) return;
   hasFit=true;
@@ -682,6 +710,16 @@ function openDetailPanel(num) {
   // ── Actions
   const actionWrap=div(""); actionWrap.style.cssText="display:flex;flex-wrap:wrap;gap:.4rem";
   if(isOrphaned(asset)){const btn=document.createElement("button");btn.className="btn-sm-action";btn.textContent="↺ Reassign parent";btn.addEventListener("click",()=>openOrphanParentSelectModal(num));actionWrap.appendChild(btn);}
+  const canAssignToPlaceholder=!asset.parentAssetNumber||isReferenceMismatch(asset);
+  if(canAssignToPlaceholder){
+    getAssignablePlaceholdersForAsset(asset).forEach(ph=>{
+      const btn=document.createElement("button");
+      btn.className="btn-sm-action";
+      btn.textContent=`Assign to ${ph.itemNameCode} placeholder`;
+      btn.addEventListener("click",()=>assignAssetToPlaceholder(num,ph.id));
+      actionWrap.appendChild(btn);
+    });
+  }
   const mg=getMissingReferenceChildGroups(asset);
   if(mg.length){
     const cands=getUnassignedAssetsForGroups(mg,num);
@@ -758,7 +796,11 @@ function selectAsset(num) {
     triageView.classList.add("hidden");
     treeCanvasView.classList.remove("hidden");
   }
-  hasFit=false;
+  const newRootId=findTreeRoot(num);
+  if(newRootId!==lastRootId){
+    hasFit=false;
+    lastRootId=newRootId;
+  }
   renderCanvas();
   openDetailPanel(num);
   updateIssueNav();
@@ -889,6 +931,12 @@ trayToggle.addEventListener("click",()=>{changesTray.classList.toggle("collapsed
 function updateAssetParent(num,newParent,isRevert=false) {
   const asset=assetMap.get(num);if(!asset||!newParent||num===newParent||isDescendant(num,newParent))return;
   const old=asset.parentAssetNumber||null;if(old===newParent)return;
+  if(old?.startsWith("__ph__")){
+    const oldPlaceholderId=old.slice(6);
+    const existing=placeholderChildrenMap.get(oldPlaceholderId)||[];
+    const filtered=existing.filter(c=>c!==num);
+    filtered.length?placeholderChildrenMap.set(oldPlaceholderId,filtered):placeholderChildrenMap.delete(oldPlaceholderId);
+  }
   if(old&&childrenMap.has(old)){const s=childrenMap.get(old).filter(c=>c!==num);s.length?childrenMap.set(old,s):childrenMap.delete(old);}
   asset.parentAssetNumber=newParent;
   if(!childrenMap.has(newParent))childrenMap.set(newParent,[]);
@@ -911,10 +959,57 @@ function removePlaceholderAsset(id,{offerUndo=false}={}) {
   let removed=null;
   placeholderMap.forEach((items,pNum)=>{const i=items.findIndex(p=>p.id===id);if(i!==-1){removed=items[i];const f=items.filter(p=>p.id!==id);f.length?placeholderMap.set(pNum,f):placeholderMap.delete(pNum);}});
   if(!removed)return;
+  const assignedChildren=placeholderChildrenMap.get(id)||[];
+  assignedChildren.forEach(num=>{
+    const child=assetMap.get(num);
+    if(child?.parentAssetNumber===`__ph__${id}`) child.parentAssetNumber=null;
+    if(originalParentMap.get(num)===child?.parentAssetNumber) changedAssets.delete(num); else changedAssets.add(num);
+  });
+  placeholderChildrenMap.delete(id);
   placeholderAssets=placeholderAssets.filter(p=>p.id!==id);
   if(offerUndo){lastRemovedPlaceholder=removed;showUndoToast(`Removed placeholder ${removed.itemNameCode}.`,()=>{if(!lastRemovedPlaceholder)return;const it=lastRemovedPlaceholder;placeholderAssets.push(it);if(!placeholderMap.has(it.parentAssetNumber))placeholderMap.set(it.parentAssetNumber,[]);placeholderMap.get(it.parentAssetNumber).push(it);lastRemovedPlaceholder=null;buildIssueList();updateChangesTray();if(selectedAssetNumber){hasFit=false;renderCanvas();}});}
-  buildIssueList();updateChangesTray();if(selectedAssetNumber){hasFit=false;renderCanvas();openDetailPanel(selectedAssetNumber);}
+  if(selectedAssetNumber) hasFit=false;
+  buildIssueList();updateChangesTray();if(selectedAssetNumber){renderCanvas();openDetailPanel(selectedAssetNumber);}
 }
+function assignAssetToPlaceholder(assetNumber, placeholderId) {
+  const asset=assetMap.get(assetNumber);
+  const placeholder=placeholderAssets.find(ph=>ph.id===placeholderId);
+  if(!asset||!placeholder) return;
+  const prevParent=asset.parentAssetNumber||null;
+  if(prevParent&&childrenMap.has(prevParent)){
+    const siblings=childrenMap.get(prevParent).filter(c=>c!==assetNumber);
+    siblings.length?childrenMap.set(prevParent,siblings):childrenMap.delete(prevParent);
+  }
+  if(prevParent?.startsWith("__ph__")){
+    const prevPlaceholderId=prevParent.slice(6);
+    const prevChildren=placeholderChildrenMap.get(prevPlaceholderId)||[];
+    const filtered=prevChildren.filter(c=>c!==assetNumber);
+    filtered.length?placeholderChildrenMap.set(prevPlaceholderId,filtered):placeholderChildrenMap.delete(prevPlaceholderId);
+  }
+  asset.parentAssetNumber=`__ph__${placeholderId}`;
+  const current=placeholderChildrenMap.get(placeholderId)||[];
+  if(!current.includes(assetNumber)) placeholderChildrenMap.set(placeholderId,[...current,assetNumber]);
+  if(originalParentMap.get(assetNumber)===asset.parentAssetNumber) changedAssets.delete(assetNumber); else changedAssets.add(assetNumber);
+  buildIssueList(); updateChangesTray(); renderAssetList();
+  hasFit=false; renderCanvas(); openDetailPanel(assetNumber);
+}
+
+function getAssignablePlaceholdersForAsset(asset) {
+  if(!asset) return [];
+  const code=extractNameCode(asset.itemNameCodeDesc);
+  if(!code) return [];
+  const rootId=findTreeRoot(asset.assetNumber);
+  const inScope=subtreeIds(rootId);
+  return placeholderAssets.filter(ph=>{
+    if(!inScope.has(ph.parentAssetNumber)) return false;
+    const parent=assetMap.get(ph.parentAssetNumber);
+    if(!parent) return false;
+    const parentCode=extractNameCode(parent.itemNameCodeDesc);
+    const groups=referenceChildMap.get(parentCode)||[];
+    return groups.some(g=>g.codes.has(code));
+  });
+}
+
 function showUndoToast(msg,onUndo) {
   undoToastMessage.textContent=msg;undoToast.classList.remove("hidden");
   if(undoToastHandler)undoToastAction.removeEventListener("click",undoToastHandler);
@@ -991,7 +1086,34 @@ function openMissingSlotActionModal(node){
 }
 function closeMissingSlotActionModal(){closeModal(missingSlotActionModal);}
 function updateExistingItemFilter(cands){if(!existingAssetItemFilter)return;const codes=new Set();cands.forEach(a=>{const c=extractNameCode(a.itemNameCodeDesc);if(c)codes.add(c);});existingAssetItemFilter.innerHTML="";const all=document.createElement("option");all.value="all";all.textContent="All item codes";existingAssetItemFilter.appendChild(all);Array.from(codes).sort().forEach(c=>{const o=document.createElement("option");o.value=c;o.textContent=c;existingAssetItemFilter.appendChild(o);});}
-function renderExistingList(){existingAssetSelectList.innerHTML="";const q=(existingAssetSearch?.value||"").toLowerCase();const code=existingAssetItemFilter?.value||"all";const filtered=existingAssetCandidates.filter(a=>{const label=`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase();if(q&&!label.includes(q))return false;if(code!=="all"&&extractNameCode(a.itemNameCodeDesc)!==code)return false;return true;});if(!filtered.length){const p=document.createElement("p");p.className="modal-empty";p.textContent="No matching assets found.";existingAssetSelectList.appendChild(p);return;}filtered.forEach(a=>existingAssetSelectList.appendChild(buildAssetOptionButton(a,selected=>{updateAssetParent(selected.assetNumber,existingAssetTargetParentNumber);if(existingAssetReplacementPlaceholderId)removePlaceholderAsset(existingAssetReplacementPlaceholderId,{offerUndo:false});closeExistingAssetSelectModal();})));}
+function renderExistingList(){
+  existingAssetSelectList.innerHTML="";
+  const q=(existingAssetSearch?.value||"").toLowerCase();
+  const code=existingAssetItemFilter?.value||"all";
+  const filtered=existingAssetCandidates.filter(a=>{
+    const label=`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase();
+    if(q&&!label.includes(q)) return false;
+    if(code!=="all"&&extractNameCode(a.itemNameCodeDesc)!==code) return false;
+    return true;
+  });
+  if(!filtered.length){
+    const p=document.createElement("p");
+    p.className="modal-empty";
+    p.textContent="No matching assets found.";
+    existingAssetSelectList.appendChild(p);
+    return;
+  }
+  filtered.forEach(a=>existingAssetSelectList.appendChild(buildAssetOptionButton(a,selected=>{
+    updateAssetParent(selected.assetNumber,existingAssetTargetParentNumber);
+    if(existingAssetReplacementPlaceholderId){
+      const phChildren=placeholderChildrenMap.get(existingAssetReplacementPlaceholderId)||[];
+      phChildren.forEach(childAssetNumber=>updateAssetParent(childAssetNumber,selected.assetNumber));
+      placeholderChildrenMap.delete(existingAssetReplacementPlaceholderId);
+      removePlaceholderAsset(existingAssetReplacementPlaceholderId,{offerUndo:false});
+    }
+    closeExistingAssetSelectModal();
+  })));
+}
 function openExistingAssetSelectModal(parentNum,groups,{allowAssigned=false,replacePlaceholderId=null}={}){existingAssetTargetParentNumber=parentNum;existingAssetReplacementPlaceholderId=replacePlaceholderId;existingAssetCandidates=getCandidateAssetsForGroups(groups,parentNum,{allowAssigned});if(existingAssetSelectTitle)existingAssetSelectTitle.textContent=replacePlaceholderId?`Replace placeholder for ${parentNum}`:`Link existing asset for ${parentNum}`;if(existingAssetSearch)existingAssetSearch.value="";updateExistingItemFilter(existingAssetCandidates);if(existingAssetItemFilter)existingAssetItemFilter.value="all";renderExistingList();openModal(existingAssetSelectModal);}
 function closeExistingAssetSelectModal(){closeModal(existingAssetSelectModal);existingAssetCandidates=[];existingAssetTargetParentNumber=null;existingAssetReplacementPlaceholderId=null;}
 function renderOrphanList(){orphanParentSelectList.innerHTML="";const q=(orphanParentSearch?.value||"").toLowerCase();const filtered=orphanParentCandidates.filter(a=>{if(!q)return true;return`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase().includes(q);});if(!filtered.length){const p=document.createElement("p");p.className="modal-empty";p.textContent="No matching assets.";orphanParentSelectList.appendChild(p);return;}filtered.forEach(a=>orphanParentSelectList.appendChild(buildAssetOptionButton(a,selected=>{if(orphanTargetAssetNumber)updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);closeOrphanParentSelectModal();})));}
@@ -1012,7 +1134,37 @@ function updateReferenceTree(tree){if(!tree?.root)return;referenceNameCodes=coll
 function loadReferenceTrees(){fetch("reference-trees.json",{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{referenceTrees=Array.isArray(data?.trees)?data.trees:[];referenceTreeSelect.innerHTML="";referenceTrees.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.label;referenceTreeSelect.appendChild(o);});if(referenceTrees.length){referenceTreeSelect.value=referenceTrees[0].id;updateReferenceTree(referenceTrees[0]);}}).catch(()=>{});}
 
 // ── Export ────────────────────────────────────────────────────────────
-function buildExportRows(){const rows=[EXPORT_HEADERS];Array.from(changedAssets).sort().forEach(num=>{const a=assetMap.get(num);if(!a)return;const row=Array(EXPORT_HEADERS.length).fill("");row[0]=a.assetNumber;row[EXPORT_HEADERS.indexOf("ParentEquipRef")]=a.parentAssetNumber||"";rows.push(row);});placeholderAssets.slice().sort((a,b)=>{const pc=a.parentAssetNumber.localeCompare(b.parentAssetNumber);return pc||a.itemNameCode.localeCompare(b.itemNameCode);}).forEach(ph=>{const row=Array(EXPORT_HEADERS.length).fill("");row[EXPORT_HEADERS.indexOf("ItemNameCode")]=ph.itemNameCode;rows.push(row);});return rows;}
+function buildExportRows(){
+  const rows=[EXPORT_HEADERS];
+  const parentIdx=EXPORT_HEADERS.indexOf("ParentEquipRef");
+  const itemIdx=EXPORT_HEADERS.indexOf("ItemNameCode");
+  const noteIdx=EXPORT_HEADERS.indexOf("Colloquial_1");
+  Array.from(changedAssets).sort().forEach(num=>{
+    const a=assetMap.get(num);
+    if(!a) return;
+    const row=Array(EXPORT_HEADERS.length).fill("");
+    row[0]=a.assetNumber;
+    if(a.parentAssetNumber?.startsWith("__ph__")){
+      const placeholderId=a.parentAssetNumber.slice(6);
+      const placeholder=placeholderAssets.find(ph=>ph.id===placeholderId);
+      row[parentIdx]="";
+      row[itemIdx]=placeholder?.itemNameCode||"";
+      if(noteIdx!==-1) row[noteIdx]=`Assigned to placeholder ${placeholder?.itemNameCode||placeholderId}; real parent required.`;
+    } else {
+      row[parentIdx]=a.parentAssetNumber||"";
+    }
+    rows.push(row);
+  });
+  placeholderAssets.slice().sort((a,b)=>{
+    const pc=a.parentAssetNumber.localeCompare(b.parentAssetNumber);
+    return pc||a.itemNameCode.localeCompare(b.itemNameCode);
+  }).forEach(ph=>{
+    const row=Array(EXPORT_HEADERS.length).fill("");
+    row[itemIdx]=ph.itemNameCode;
+    rows.push(row);
+  });
+  return rows;
+}
 function exportChanges(){if(changedAssets.size===0&&placeholderAssets.length===0)return;const ws=XLSX.utils.aoa_to_sheet(buildExportRows());const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"ParentChanges");XLSX.writeFile(wb,"asset-parent-changes.xlsx");}
 
 // ── File handling ─────────────────────────────────────────────────────
