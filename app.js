@@ -730,10 +730,8 @@ zoomOutBtn.addEventListener("click",()=>{ zoom=Math.max(0.15,zoom*0.8); applyTra
 fitBtn.addEventListener("click",()=>{ hasFit=false; renderCanvas(); });
 
 canvasWrap.addEventListener("dragover", e => {
-  const assetNumber = e.dataTransfer?.types?.includes("application/x-asset-number")
-    ? e.dataTransfer.getData("application/x-asset-number")
-    : null;
-  if (!assetNumber || !ghostDropTargets.size) return;
+  const hasAssetPayload = e.dataTransfer?.types?.includes("application/x-asset-number");
+  if (!hasAssetPayload || !ghostDropTargets.size) return;
   const hit = hitTestGhostDropTarget(e.clientX, e.clientY);
   clearGhostDragState();
   if (!hit) return;
@@ -773,7 +771,11 @@ canvasWrap.addEventListener("drop", e => {
   }
 
   flashNodeSuccess(targetEl);
-  updateAssetParent(assetNumber, hit.node.parentAssetId, false, { flashEl: targetEl });
+  if (isPlaceholderRef(hit.node.parentAssetId)) {
+    assignAssetToPlaceholder(assetNumber, getPlaceholderIdFromRef(hit.node.parentAssetId), { flashEl: targetEl });
+  } else {
+    updateAssetParent(assetNumber, hit.node.parentAssetId, false, { flashEl: targetEl });
+  }
   selectAsset(assetNumber);
 });
 
@@ -1078,6 +1080,12 @@ function updateChangesTray() {
 }
 trayToggle.addEventListener("click",()=>{changesTray.classList.toggle("collapsed");changesTray.classList.toggle("expanded");});
 
+function refreshAfterHierarchyChange(focusAssetNumber = selectedAssetNumber) {
+  hasFit = false;
+  renderCanvas();
+  if (focusAssetNumber) openDetailPanel(focusAssetNumber);
+}
+
 // ── Asset parent update ───────────────────────────────────────────────
 function updateAssetParent(num,newParent,isRevert=false,{ flashEl=null }={}) {
   const asset=assetMap.get(num);if(!asset||!newParent||num===newParent||isDescendant(num,newParent))return;
@@ -1095,7 +1103,7 @@ function updateAssetParent(num,newParent,isRevert=false,{ flashEl=null }={}) {
   if(isRevert||originalParentMap.get(num)===newParent)changedAssets.delete(num);else changedAssets.add(num);
   buildIssueList();updateChangesTray();renderAssetList();
   flashNodeSuccess(flashEl);
-  if(selectedAssetNumber){hasFit=false;renderCanvas();openDetailPanel(selectedAssetNumber);}
+  refreshAfterHierarchyChange(selectedAssetNumber);
 }
 
 // ── Placeholders ──────────────────────────────────────────────────────
@@ -1106,7 +1114,8 @@ function addPlaceholderAsset(parentNum,itemNameCode,{ flashEl=null }={}) {
   placeholderAssets.push(ph);
   if(!placeholderMap.has(parentNum))placeholderMap.set(parentNum,[]);
   placeholderMap.get(parentNum).push(ph);
-  buildIssueList();updateChangesTray();flashNodeSuccess(flashEl);if(selectedAssetNumber){hasFit=false;renderCanvas();openDetailPanel(selectedAssetNumber);}
+  buildIssueList();updateChangesTray();flashNodeSuccess(flashEl);
+  refreshAfterHierarchyChange(selectedAssetNumber);
 }
 function removePlaceholderAsset(id,{offerUndo=false}={}) {
   let removed=null;
@@ -1145,7 +1154,7 @@ function assignAssetToPlaceholder(assetNumber, placeholderId,{ flashEl=null }={}
   if(originalParentMap.get(assetNumber)===asset.parentAssetNumber) changedAssets.delete(assetNumber); else changedAssets.add(assetNumber);
   buildIssueList(); updateChangesTray(); renderAssetList();
   flashNodeSuccess(flashEl);
-  hasFit=false; renderCanvas(); openDetailPanel(assetNumber);
+  refreshAfterHierarchyChange(assetNumber);
 }
 
 function getAssignablePlaceholdersForAsset(asset) {
