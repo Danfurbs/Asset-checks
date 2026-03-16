@@ -855,7 +855,14 @@ function openDetailPanel(num) {
 
   // ── Actions
   const actionWrap=div(""); actionWrap.style.cssText="display:flex;flex-wrap:wrap;gap:.4rem";
-  if(isOrphaned(asset)){const btn=document.createElement("button");btn.className="btn-sm-action";btn.textContent="↺ Reassign parent";btn.addEventListener("click",()=>openOrphanParentSelectModal(num));actionWrap.appendChild(btn);}
+  const canReassignParent=isOrphaned(asset)||isReferenceMismatch(asset);
+  if(canReassignParent){
+    const btn=document.createElement("button");
+    btn.className="btn-sm-action";
+    btn.textContent=isOrphaned(asset)?"↺ Reassign parent":"↺ Correct parent";
+    btn.addEventListener("click",()=>openOrphanParentSelectModal(num));
+    actionWrap.appendChild(btn);
+  }
   const canAssignToPlaceholder=!asset.parentAssetNumber||isReferenceMismatch(asset);
   if(canAssignToPlaceholder){
     getAssignablePlaceholdersForAsset(asset).forEach(ph=>{
@@ -1210,7 +1217,30 @@ function getCandidateAssetsForGroups(groups, parentNum, { allowAssigned = false 
   });
 }
 function getUnassignedAssetsForGroups(groups,parentNum){return getCandidateAssetsForGroups(groups,parentNum,{allowAssigned:false});}
-function getParentCandidates(num){return assets.filter(a=>a&&a.assetNumber!==num&&!isDescendant(num,a.assetNumber)&&!isObsolete(a)).sort((a,b)=>a.assetNumber.localeCompare(b.assetNumber));}
+function getValidParentCodesForAsset(asset){
+  const code=extractNameCode(asset?.itemNameCodeDesc);
+  if(!code||!referenceNameCodes.includes(code)) return null;
+  return new Set(referenceParentMap.get(code)||[]);
+}
+function getParentCandidates(num){
+  const asset=assetMap.get(num);
+  if(!asset) return [];
+  const allowedParentCodes=getValidParentCodesForAsset(asset);
+  if(allowedParentCodes&&allowedParentCodes.size===0) return [];
+  return assets.filter(a=>{
+    if(!a||a.assetNumber===num||isDescendant(num,a.assetNumber)||isObsolete(a)) return false;
+    if(!allowedParentCodes) return true;
+    const parentCode=extractNameCode(a.itemNameCodeDesc);
+    return parentCode?allowedParentCodes.has(parentCode):false;
+  }).sort((a,b)=>a.assetNumber.localeCompare(b.assetNumber));
+}
+function getReassignmentCandidates(num){
+  const asset=assetMap.get(num);
+  if(!asset) return [];
+  const realParentCandidates=getParentCandidates(num).map(candidate=>({type:"asset",asset:candidate}));
+  const placeholderCandidates=getAssignablePlaceholdersForAsset(asset).map(placeholder=>({type:"placeholder",placeholder}));
+  return [...realParentCandidates,...placeholderCandidates];
+}
 function buildPlaceholderOptions(groups){const opts=[];groups.forEach(g=>{const codes=Array.from(g.codes).sort();codes.forEach(code=>opts.push({code,groupLabel:codes.join(" or ")}));});return opts;}
 function getTemplateNodeGroups(node){
   const codes=(node?.codes||[]).filter(Boolean);
@@ -1255,6 +1285,36 @@ function buildAssetOptionButton(asset, onSelect) {
   btn.addEventListener("click", () => onSelect(asset));
   return btn;
 }
+function buildPlaceholderOptionButton(placeholder, onSelect) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "modal-option";
+
+  const title = document.createElement("span");
+  title.className = "modal-option-title";
+  title.textContent = `Placeholder ${placeholder.itemNameCode}`;
+  btn.appendChild(title);
+
+  const tag = document.createElement("span");
+  tag.style.cssText = "font-size:.68rem;font-weight:600;padding:.1rem .4rem;border-radius:999px;background:#eef2ff;color:#3730a3;width:fit-content;display:block;margin-bottom:.2rem;";
+  tag.textContent = `Placeholder under ${placeholder.parentAssetNumber}`;
+  btn.appendChild(tag);
+
+  const dl = document.createElement("dl");
+  dl.className = "modal-option-details";
+  [
+    { label: "Type", value: placeholder.itemNameCode },
+    { label: "Anchor Parent", value: placeholder.parentAssetNumber },
+  ].forEach(({ label, value }) => {
+    const dt = document.createElement("dt"); dt.textContent = label;
+    const dd = document.createElement("dd"); dd.textContent = value;
+    dl.appendChild(dt); dl.appendChild(dd);
+  });
+  btn.appendChild(dl);
+  btn.addEventListener("click", () => onSelect(placeholder));
+  return btn;
+}
+
 function openPlaceholderSelectModal(parentNum,groups,templateTid=null){
   placeholderSelectList.innerHTML="";
   if(placeholderSelectTitle)placeholderSelectTitle.textContent=`Add placeholder for ${parentNum}`;
@@ -1380,8 +1440,47 @@ function renderExistingList(){
 }
 function openExistingAssetSelectModal(parentNum,groups,{allowAssigned=false,replacePlaceholderId=null,sourceTemplateTid=null}={}){existingAssetTargetParentNumber=parentNum;existingAssetReplacementPlaceholderId=replacePlaceholderId;existingAssetSourceTemplateTid=sourceTemplateTid;existingAssetCandidates=getCandidateAssetsForGroups(groups,parentNum,{allowAssigned});if(existingAssetSelectTitle)existingAssetSelectTitle.textContent=replacePlaceholderId?`Replace placeholder for ${parentNum}`:`Link existing asset for ${parentNum}`;if(existingAssetSearch)existingAssetSearch.value="";updateExistingItemFilter(existingAssetCandidates);if(existingAssetItemFilter)existingAssetItemFilter.value="all";renderExistingList();openModal(existingAssetSelectModal);}
 function closeExistingAssetSelectModal(){closeModal(existingAssetSelectModal);existingAssetCandidates=[];existingAssetTargetParentNumber=null;existingAssetReplacementPlaceholderId=null;existingAssetSourceTemplateTid=null;}
-function renderOrphanList(){orphanParentSelectList.innerHTML="";const q=(orphanParentSearch?.value||"").toLowerCase();const filtered=orphanParentCandidates.filter(a=>{if(!q)return true;return`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase().includes(q);});if(!filtered.length){const p=document.createElement("p");p.className="modal-empty";p.textContent="No matching assets.";orphanParentSelectList.appendChild(p);return;}filtered.forEach(a=>orphanParentSelectList.appendChild(buildAssetOptionButton(a,selected=>{if(orphanTargetAssetNumber)updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);closeOrphanParentSelectModal();})));}
-function openOrphanParentSelectModal(num){orphanTargetAssetNumber=num;if(orphanParentSelectTitle)orphanParentSelectTitle.textContent=`Assign new parent for ${num}`;orphanParentCandidates=getParentCandidates(num);if(orphanParentSearch)orphanParentSearch.value="";renderOrphanList();openModal(orphanParentSelectModal);}
+function renderOrphanList(){
+  orphanParentSelectList.innerHTML="";
+  const q=(orphanParentSearch?.value||"").toLowerCase();
+  const filtered=orphanParentCandidates.filter(candidate=>{
+    if(!q) return true;
+    if(candidate.type==="placeholder"){
+      const ph=candidate.placeholder;
+      return `${ph.itemNameCode} ${ph.parentAssetNumber}`.toLowerCase().includes(q);
+    }
+    const a=candidate.asset;
+    return`${a.assetNumber} ${a.assetDesc1} ${a.assetDesc2} ${a.itemNameCodeDesc} ${a.elr}`.toLowerCase().includes(q);
+  });
+  if(!filtered.length){
+    const p=document.createElement("p");
+    p.className="modal-empty";
+    p.textContent="No matching parents or placeholders.";
+    orphanParentSelectList.appendChild(p);
+    return;
+  }
+  filtered.forEach(candidate=>{
+    if(candidate.type==="placeholder") {
+      orphanParentSelectList.appendChild(buildPlaceholderOptionButton(candidate.placeholder,selected=>{
+        if(orphanTargetAssetNumber) assignAssetToPlaceholder(orphanTargetAssetNumber,selected.id);
+        closeOrphanParentSelectModal();
+      }));
+      return;
+    }
+    orphanParentSelectList.appendChild(buildAssetOptionButton(candidate.asset,selected=>{
+      if(orphanTargetAssetNumber) updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);
+      closeOrphanParentSelectModal();
+    }));
+  });
+}
+function openOrphanParentSelectModal(num){
+  orphanTargetAssetNumber=num;
+  if(orphanParentSelectTitle)orphanParentSelectTitle.textContent=`Assign new parent for ${num}`;
+  orphanParentCandidates=getReassignmentCandidates(num);
+  if(orphanParentSearch)orphanParentSearch.value="";
+  renderOrphanList();
+  openModal(orphanParentSelectModal);
+}
 function closeOrphanParentSelectModal(){closeModal(orphanParentSelectModal);orphanParentCandidates=[];orphanTargetAssetNumber=null;}
 const modalFocusReturnMap=new WeakMap();
 function getFocusableElements(root){if(!root)return[];return Array.from(root.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')).filter(el=>!el.disabled&&el.offsetParent!==null);}
