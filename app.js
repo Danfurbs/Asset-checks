@@ -1170,6 +1170,8 @@ function getAssignablePlaceholdersForAsset(asset) {
   if(!code) return [];
   const rootId=findTreeRoot(asset.assetNumber);
   const inScope=subtreeIds(rootId);
+  const allowedParentCodes=getValidParentCodesForAsset(asset);
+
   function resolveAnchorAsset(parentRef){
     if(!parentRef) return null;
     if(assetMap.has(parentRef)) return parentRef;
@@ -1179,9 +1181,16 @@ function getAssignablePlaceholdersForAsset(asset) {
     }
     return null;
   }
+
   return placeholderAssets.filter(ph=>{
     const anchor=resolveAnchorAsset(ph.parentAssetNumber);
     if(!anchor||!inScope.has(anchor)) return false;
+
+    const placeholderCode=(ph.itemNameCode||"").toUpperCase();
+    if(allowedParentCodes){
+      return placeholderCode?allowedParentCodes.has(placeholderCode):false;
+    }
+
     const parentCode=getParentCodeByRef(ph.parentAssetNumber);
     if(!parentCode) return false;
     const groups=referenceChildMap.get(parentCode)||[];
