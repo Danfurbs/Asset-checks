@@ -855,7 +855,14 @@ function openDetailPanel(num) {
 
   // ── Actions
   const actionWrap=div(""); actionWrap.style.cssText="display:flex;flex-wrap:wrap;gap:.4rem";
-  if(isOrphaned(asset)){const btn=document.createElement("button");btn.className="btn-sm-action";btn.textContent="↺ Reassign parent";btn.addEventListener("click",()=>openOrphanParentSelectModal(num));actionWrap.appendChild(btn);}
+  const canReassignParent=isOrphaned(asset)||isReferenceMismatch(asset);
+  if(canReassignParent){
+    const btn=document.createElement("button");
+    btn.className="btn-sm-action";
+    btn.textContent=isOrphaned(asset)?"↺ Reassign parent":"↺ Correct parent";
+    btn.addEventListener("click",()=>openOrphanParentSelectModal(num));
+    actionWrap.appendChild(btn);
+  }
   const canAssignToPlaceholder=!asset.parentAssetNumber||isReferenceMismatch(asset);
   if(canAssignToPlaceholder){
     getAssignablePlaceholdersForAsset(asset).forEach(ph=>{
