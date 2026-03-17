@@ -59,10 +59,6 @@ const existingAssetSelectTitle  = document.getElementById("existingAssetSelectTi
 const existingAssetSelectCancel = document.getElementById("existingAssetSelectCancel");
 const existingAssetSearch       = document.getElementById("existingAssetSearch");
 const existingAssetItemFilter   = document.getElementById("existingAssetItemFilter");
-const missingSlotActionModal    = document.getElementById("missingSlotActionModal");
-const missingSlotActionTitle    = document.getElementById("missingSlotActionTitle");
-const missingSlotActionList     = document.getElementById("missingSlotActionList");
-const missingSlotActionCancel   = document.getElementById("missingSlotActionCancel");
 const orphanParentSelectModal   = document.getElementById("orphanParentSelectModal");
 const orphanParentSelectList    = document.getElementById("orphanParentSelectList");
 const orphanParentSelectTitle   = document.getElementById("orphanParentSelectTitle");
@@ -83,7 +79,7 @@ let lastRemovedPlaceholder = null, undoToastTimeoutId = null, undoToastHandler =
 let referenceTrees = [], referenceNameCodes = [], referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set(), referenceChildMap = new Map(), referenceAssociatedMap = new Map();
 let issueList = [], issueIndex = -1;
-let viewMode = "tree";   // "tree" | "template" | "sidebyside"
+let viewMode = "template";   // "template" | "sidebyside"
 let showAssoc = false;
 let zoom = 1, panX = 0, panY = 0;
 let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
@@ -493,52 +489,13 @@ function renderCanvas() {
   if(!selectedAssetNumber) return;
   const rootId=findTreeRoot(selectedAssetNumber);
 
-  if(viewMode==="tree")       renderTreeMode(rootId);
-  else if(viewMode==="template") renderTemplateMode(rootId);
-  else                        renderSideBySide(rootId);
-}
-
-function renderTreeMode(rootId) {
-  const pos=layoutTree(rootId,childrenMap);
-  const edges=svgEl("g",{class:"edges"}), nodes=svgEl("g",{class:"nodes"});
-  svgRoot.appendChild(edges); svgRoot.appendChild(nodes);
-
-  // assoc lines first (under nodes)
-  if(showAssoc) {
-    const ids=subtreeIds(rootId);
-    const drawn=new Set();
-    ids.forEach(id=>{
-      const a=assetMap.get(id); if(!a) return;
-      const targets=referenceAssociatedMap.get(extractNameCode(a.itemNameCodeDesc))||new Set();
-      targets.forEach(tCode=>{
-        const tAsset=assets.find(x=>extractNameCode(x.itemNameCodeDesc)===tCode&&ids.has(x.assetNumber));
-        if(!tAsset) return;
-        const key=[id,tAsset.assetNumber].sort().join("|");
-        if(drawn.has(key)) return; drawn.add(key);
-        const pa=pos.get(id), pb=pos.get(tAsset.assetNumber);
-        if(pa&&pb) edges.appendChild(makeAssocLine(pa.x,pa.y+NH/2,pb.x,pb.y+NH/2));
-      });
-    });
-  }
-
-  pos.forEach(({x,y},id)=>{
-    const asset=assetMap.get(id);
-    const parent=asset?.parentAssetNumber?pos.get(asset.parentAssetNumber):null;
-    if(parent) edges.appendChild(makeCurve(parent.x,parent.y+NH,x,y));
-    const card=makeNodeCard(asset,x,y,id===selectedAssetNumber,{
-      hasMissing:asset&&getMissingReferenceChildren(asset).length>0,
-      isMismatch:asset&&isReferenceMismatch(asset),
-      isOrph:asset&&isOrphaned(asset)
-    });
-    card.addEventListener("click",()=>selectAsset(id));
-    nodes.appendChild(card);
-  });
-  fitIfNeeded(pos);
+  if(viewMode==="template") renderTemplateMode(rootId);
+  else                      renderSideBySide(rootId);
 }
 
 function renderTemplateMode(rootId) {
   const tree=getActiveReferenceTree();
-  if(!tree?.root){renderTreeMode(rootId);return;}
+  if(!tree?.root) return;
   tplCounter=0;
   const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
   const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&!a.parentAssetNumber&&subtreeIds(rootId).has(a.assetNumber));
@@ -571,8 +528,7 @@ function renderTemplateMode(rootId) {
         ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
         card.addEventListener("click", e => {
           e.stopPropagation();
-          const pos = p;
-          if (pos) showInlineSlotBar(n, pos.x, pos.y);
+          if (p) showInlineSlotBar(n, p.x, p.y);
         });
       }
     } else {
@@ -582,8 +538,7 @@ function renderTemplateMode(rootId) {
         ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
         card.addEventListener("click", e => {
           e.stopPropagation();
-          const pos = p;
-          if (pos) showInlineSlotBar(n, pos.x, pos.y);
+          if (p) showInlineSlotBar(n, p.x, p.y);
         });
       }
     }
@@ -592,7 +547,6 @@ function renderTemplateMode(rootId) {
   }
   walk(tmpl);
 
-  // assoc overlays
   if(showAssoc) {
     const idsByCode=new Map();
     function collectCodes(n){ if(n.assetId){ const c=extractNameCode(assetMap.get(n.assetId)?.itemNameCodeDesc); if(c){if(!idsByCode.has(c))idsByCode.set(c,[]); idsByCode.get(c).push(n.tid);} } n.children.forEach(collectCodes); }
@@ -614,41 +568,88 @@ function renderTemplateMode(rootId) {
   fitIfNeeded(pos);
 }
 
+function alignPositionsByDepth(posA, posB) {
+  const sharedY = new Map();
+  [posA, posB].forEach(pos => {
+    pos.forEach(({ y }) => {
+      const depth = Math.round(y / (NH + VGAP));
+      const current = sharedY.get(depth) ?? 0;
+      sharedY.set(depth, Math.max(current, y));
+    });
+  });
+  const align = pos => {
+    const out = new Map();
+    pos.forEach(({ x, y }, key) => {
+      const depth = Math.round(y / (NH + VGAP));
+      out.set(key, { x, y: sharedY.get(depth) ?? y });
+    });
+    return out;
+  };
+  return { alignedA: align(posA), alignedB: align(posB) };
+}
+
+function drawCorrespondenceLines(tmplNode, tPos, realPos, tOffX, rOffX, edgesGroup) {
+  if (tmplNode.assetId) {
+    const tp = tPos.get(tmplNode.tid);
+    const rp = realPos.get(tmplNode.assetId);
+    if (tp && rp) {
+      const x1 = tp.x + NW / 2 + tOffX;
+      const y1 = tp.y + NH / 2;
+      const x2 = rp.x - NW / 2 + rOffX;
+      const y2 = rp.y + NH / 2;
+      edgesGroup.appendChild(svgEl("line", {
+        x1, y1, x2, y2,
+        stroke: "#c7d2fe", "stroke-width": 1,
+        "stroke-dasharray": "4,4", opacity: "0.6",
+        "marker-end": "url(#corrArrow)"
+      }));
+    }
+  }
+  tmplNode.children.forEach(c => drawCorrespondenceLines(c, tPos, realPos, tOffX, rOffX, edgesGroup));
+}
+
 function renderSideBySide(rootId) {
-  // left = template, right = real tree; keep a fixed gap around divider (x=0)
   tplCounter=0;
   const tree=getActiveReferenceTree();
-  const realPos=layoutTree(rootId,childrenMap);
-  const SIDE_GAP=60;
+  let realPos=layoutTree(rootId,childrenMap);
+  const SIDE_GAP=80;
 
-  // measure real bounds
-  let minX=Infinity,maxX=-Infinity;
-  realPos.forEach(({x})=>{minX=Math.min(minX,x-NW/2);maxX=Math.max(maxX,x+NW/2);});
-
-  // template
-  let tplG=null;
+  let tmpl=null;
   let tPos=null;
-  let tOffX=0;
   if(tree?.root){
-    tplCounter=0;
     const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
     const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&subtreeIds(rootId).has(a.assetNumber));
-    const tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
+    tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
     tPos=layoutTemplateTree(tmpl);
-    let tMinX=Infinity,tMaxX=-Infinity;
-    tPos.forEach(({x})=>{tMinX=Math.min(tMinX,x-NW/2);tMaxX=Math.max(tMaxX,x+NW/2);});
-    tOffX=(-SIDE_GAP/2)-tMaxX;
+    const aligned=alignPositionsByDepth(tPos, realPos);
+    tPos=aligned.alignedA;
+    realPos=aligned.alignedB;
+  }
 
-    tplG=svgEl("g",{transform:`translate(${tOffX},0)`});
-    const te=svgEl("g"), tn=svgEl("g");
+  let minX=Infinity;
+  realPos.forEach(({x})=>{minX=Math.min(minX,x-NW/2);});
+  const rOffX=(SIDE_GAP/2)-minX;
+
+  let tOffX=0;
+  if(tPos){
+    let tMaxX=-Infinity;
+    tPos.forEach(({x})=>{tMaxX=Math.max(tMaxX,x+NW/2);});
+    tOffX=(-SIDE_GAP/2)-tMaxX;
+  }
+
+  const corr=svgEl("g");
+  const te=svgEl("g"), tn=svgEl("g");
+  const re=svgEl("g"), rn=svgEl("g");
+
+  if(tPos&&tmpl){
     function walkT(n){
       const p=tPos.get(n.tid); if(!p) return;
-      n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
+      n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x+tOffX,p.y+NH,cp.x+tOffX,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
       const asset=n.assetId?assetMap.get(n.assetId):null;
       const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null;
       let card=asset
-        ?makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)})
-        :placeholder?makePlaceholderCardEditable(placeholder,p.x,p.y):makeGhostCardEditable(n.refNode,p.x,p.y);
+        ?makeNodeCard(asset,p.x+tOffX,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)})
+        :placeholder?makePlaceholderCardEditable(placeholder,p.x+tOffX,p.y):makeGhostCardEditable(n.refNode,p.x+tOffX,p.y);
       if(asset){
         card.addEventListener("click",()=>selectAsset(n.assetId));
       } else if(n.parentAssetId){
@@ -656,41 +657,39 @@ function renderSideBySide(rootId) {
         ghostDropTargets.set(n.tid, { node: n, svgX: p.x + tOffX, svgY: p.y });
         card.addEventListener("click", e => {
           e.stopPropagation();
-          const pos=tPos.get(n.tid);
-          if(pos) showInlineSlotBar(n, pos.x + tOffX, pos.y);
+          if(p) showInlineSlotBar(n, p.x + tOffX, p.y);
         });
       }
       tn.appendChild(card);
       n.children.forEach(walkT);
     }
     walkT(tmpl);
-    // label
-    const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":0,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
-    tplG.appendChild(te); tplG.appendChild(tn); tplG.appendChild(lblT);
+    drawCorrespondenceLines(tmpl, tPos, realPos, tOffX, rOffX, corr);
+    const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":tOffX,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
+    tn.appendChild(lblT);
   }
 
-  // real tree group
-  const rOffX=(SIDE_GAP/2)-minX;
-  const realG=svgEl("g",{transform:`translate(${rOffX},0)`});
-  const re=svgEl("g"), rn=svgEl("g");
   realPos.forEach(({x,y},id)=>{
     const asset=assetMap.get(id); const parent=asset?.parentAssetNumber?realPos.get(asset.parentAssetNumber):null;
-    if(parent) re.appendChild(makeCurve(parent.x,parent.y+NH,x,y));
-    const card=makeNodeCard(asset,x,y,id===selectedAssetNumber,{hasMissing:asset&&getMissingReferenceChildren(asset).length>0,isMismatch:asset&&isReferenceMismatch(asset),isOrph:asset&&isOrphaned(asset)});
+    if(parent) re.appendChild(makeCurve(parent.x+rOffX,parent.y+NH,x+rOffX,y));
+    const card=makeNodeCard(asset,x+rOffX,y,id===selectedAssetNumber,{hasMissing:asset&&getMissingReferenceChildren(asset).length>0,isMismatch:asset&&isReferenceMismatch(asset),isOrph:asset&&isOrphaned(asset)});
     card.addEventListener("click",()=>selectAsset(id));
     rn.appendChild(card);
   });
-  const lblR=Object.assign(svgEl("text",{"text-anchor":"middle","x":0,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Actual assets"});
-  realG.appendChild(re); realG.appendChild(rn); realG.appendChild(lblR);
+  const lblR=Object.assign(svgEl("text",{"text-anchor":"middle","x":rOffX,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Actual assets"});
+  rn.appendChild(lblR);
 
-  // divider
   let minY=Infinity,maxY=-Infinity;
   realPos.forEach(({y})=>{minY=Math.min(minY,y);maxY=Math.max(maxY,y+NH);});
+  if(tPos) tPos.forEach(({y})=>{minY=Math.min(minY,y);maxY=Math.max(maxY,y+NH);});
   const divider=svgEl("line",{x1:0,y1:minY-30,x2:0,y2:maxY+20,stroke:"#e2e8f0","stroke-width":2,"stroke-dasharray":"6,4"});
 
-  if(tplG) svgRoot.appendChild(tplG);
+  svgRoot.appendChild(corr);
+  svgRoot.appendChild(te);
+  svgRoot.appendChild(re);
   svgRoot.appendChild(divider);
-  svgRoot.appendChild(realG);
+  svgRoot.appendChild(tn);
+  svgRoot.appendChild(rn);
 
   const combinedPos=offsetPositions(realPos,rOffX);
   if(tPos){
@@ -701,6 +700,7 @@ function renderSideBySide(rootId) {
 
 let hasFit=false;
 let lastRootId=null;
+let lastFitSignature=null;
 function fitIfNeeded(pos) {
   if(hasFit) return;
   hasFit=true;
@@ -976,6 +976,7 @@ function selectAsset(num) {
   if(newRootId!==lastRootId){
     hasFit=false;
     lastRootId=newRootId;
+    lastFitSignature=null;
   }
   renderCanvas();
   openDetailPanel(num);
@@ -1110,8 +1111,27 @@ function updateChangesTray() {
 }
 trayToggle.addEventListener("click",()=>{changesTray.classList.toggle("collapsed");changesTray.classList.toggle("expanded");});
 
+function getTreeSignature(rootId) {
+  let maxDepth = 0;
+  let count = 0;
+  function walk(id, depth) {
+    count++;
+    maxDepth = Math.max(maxDepth, depth);
+    (childrenMap.get(id) || []).forEach(c => walk(c, depth + 1));
+  }
+  walk(rootId, 0);
+  return `${rootId}:${maxDepth}:${count}`;
+}
+
 function refreshAfterHierarchyChange(focusAssetNumber = selectedAssetNumber) {
-  hasFit = false;
+  if (focusAssetNumber) {
+    const rootId = findTreeRoot(focusAssetNumber);
+    const sig = getTreeSignature(rootId);
+    if (sig !== lastFitSignature) {
+      hasFit = false;
+      lastFitSignature = sig;
+    }
+  }
   renderCanvas();
   if (focusAssetNumber) openDetailPanel(focusAssetNumber);
 }
@@ -1160,9 +1180,8 @@ function removePlaceholderAsset(id,{offerUndo=false}={}) {
   });
   placeholderChildrenMap.delete(id);
   placeholderAssets=placeholderAssets.filter(p=>p.id!==id);
-  if(offerUndo){lastRemovedPlaceholder=removed;showUndoToast(`Removed placeholder ${removed.itemNameCode}.`,()=>{if(!lastRemovedPlaceholder)return;const it=lastRemovedPlaceholder;placeholderAssets.push(it);if(!placeholderMap.has(it.parentAssetNumber))placeholderMap.set(it.parentAssetNumber,[]);placeholderMap.get(it.parentAssetNumber).push(it);lastRemovedPlaceholder=null;buildIssueList();updateChangesTray();if(selectedAssetNumber){hasFit=false;renderCanvas();}});}
-  if(selectedAssetNumber) hasFit=false;
-  buildIssueList();updateChangesTray();if(selectedAssetNumber){renderCanvas();openDetailPanel(selectedAssetNumber);}
+  if(offerUndo){lastRemovedPlaceholder=removed;showUndoToast(`Removed placeholder ${removed.itemNameCode}.`,()=>{if(!lastRemovedPlaceholder)return;const it=lastRemovedPlaceholder;placeholderAssets.push(it);if(!placeholderMap.has(it.parentAssetNumber))placeholderMap.set(it.parentAssetNumber,[]);placeholderMap.get(it.parentAssetNumber).push(it);lastRemovedPlaceholder=null;buildIssueList();updateChangesTray();if(selectedAssetNumber)refreshAfterHierarchyChange(selectedAssetNumber);});}
+  buildIssueList();updateChangesTray();if(selectedAssetNumber)refreshAfterHierarchyChange(selectedAssetNumber);
 }
 function assignAssetToPlaceholder(assetNumber, placeholderId,{ flashEl=null }={}) {
   const asset=assetMap.get(assetNumber);
@@ -1193,31 +1212,18 @@ function getAssignablePlaceholdersForAsset(asset) {
   if(!code) return [];
   const rootId=findTreeRoot(asset.assetNumber);
   const inScope=subtreeIds(rootId);
-  const allowedParentCodes=getValidParentCodesForAsset(asset);
-
-  function resolveAnchorAsset(parentRef){
-    if(!parentRef) return null;
-    if(assetMap.has(parentRef)) return parentRef;
-    if(isPlaceholderRef(parentRef)){
-      const ph=getPlaceholderByRef(parentRef);
-      return ph?resolveAnchorAsset(ph.parentAssetNumber):null;
-    }
-    return null;
-  }
 
   return placeholderAssets.filter(ph=>{
-    const anchor=resolveAnchorAsset(ph.parentAssetNumber);
-    if(!anchor||!inScope.has(anchor)) return false;
-
-    const placeholderCode=(ph.itemNameCode||"").toUpperCase();
-    if(allowedParentCodes){
-      return placeholderCode?allowedParentCodes.has(placeholderCode):false;
+    let anchorId=ph.parentAssetNumber;
+    if(isPlaceholderRef(anchorId)){
+      const parent=getPlaceholderByRef(anchorId);
+      anchorId=parent?.parentAssetNumber??null;
     }
+    if(!anchorId||!inScope.has(anchorId)) return false;
 
-    const parentCode=getParentCodeByRef(ph.parentAssetNumber);
-    if(!parentCode) return false;
-    const groups=referenceChildMap.get(parentCode)||[];
-    return groups.some(g=>g.codes.has(code));
+    const phCode=(ph.itemNameCode||"").toUpperCase();
+    const expectedChildren=referenceChildMap.get(phCode)||[];
+    return expectedChildren.some(g=>g.codes.has(code));
   });
 }
 
@@ -1491,19 +1497,36 @@ function renderOrphanList(){
     orphanParentSelectList.appendChild(p);
     return;
   }
-  filtered.forEach(candidate=>{
-    if(candidate.type==="placeholder") {
+
+  const realAssets=filtered.filter(c=>c.type==="asset");
+  const placeholders=filtered.filter(c=>c.type==="placeholder");
+
+  function appendSectionLabel(text){
+    const label=document.createElement("p");
+    label.className="modal-section-label";
+    label.textContent=text;
+    orphanParentSelectList.appendChild(label);
+  }
+
+  if(realAssets.length){
+    appendSectionLabel("Real assets");
+    realAssets.forEach(candidate=>{
+      orphanParentSelectList.appendChild(buildAssetOptionButton(candidate.asset,selected=>{
+        if(orphanTargetAssetNumber) updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);
+        closeOrphanParentSelectModal();
+      }));
+    });
+  }
+
+  if(placeholders.length){
+    appendSectionLabel("Placeholders");
+    placeholders.forEach(candidate=>{
       orphanParentSelectList.appendChild(buildPlaceholderOptionButton(candidate.placeholder,selected=>{
         if(orphanTargetAssetNumber) assignAssetToPlaceholder(orphanTargetAssetNumber,selected.id);
         closeOrphanParentSelectModal();
       }));
-      return;
-    }
-    orphanParentSelectList.appendChild(buildAssetOptionButton(candidate.asset,selected=>{
-      if(orphanTargetAssetNumber) updateAssetParent(orphanTargetAssetNumber,selected.assetNumber);
-      closeOrphanParentSelectModal();
-    }));
-  });
+    });
+  }
 }
 function openOrphanParentSelectModal(num){
   orphanTargetAssetNumber=num;
@@ -1584,7 +1607,29 @@ function buildExportRows(){
   });
   return rows;
 }
-function exportChanges(){if(changedAssets.size===0&&placeholderAssets.length===0)return;const ws=XLSX.utils.aoa_to_sheet(buildExportRows());const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"ParentChanges");XLSX.writeFile(wb,"asset-parent-changes.xlsx");}
+function buildPlaceholderAssignmentRows() {
+  const headers = ["Placeholder ID", "Placeholder Type", "Anchor Parent", "Assigned Asset Numbers"];
+  const rows = [headers];
+  placeholderAssets.forEach(ph => {
+    const children = placeholderChildrenMap.get(ph.id) || [];
+    rows.push([
+      ph.id,
+      ph.itemNameCode,
+      ph.parentAssetNumber,
+      children.join(", ") || "(none)"
+    ]);
+  });
+  return rows;
+}
+function exportChanges(){
+  if(changedAssets.size===0&&placeholderAssets.length===0)return;
+  const ws=XLSX.utils.aoa_to_sheet(buildExportRows());
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"ParentChanges");
+  const ws2=XLSX.utils.aoa_to_sheet(buildPlaceholderAssignmentRows());
+  XLSX.utils.book_append_sheet(wb,ws2,"PlaceholderAssignments");
+  XLSX.writeFile(wb,"asset-parent-changes.xlsx");
+}
 
 // ── File handling ─────────────────────────────────────────────────────
 function handleFile(file){const reader=new FileReader();reader.onload=e=>{const data=new Uint8Array(e.target.result);const wb=XLSX.read(data,{type:"array"});const sheet=wb.Sheets[wb.SheetNames[0]];const rows=XLSX.utils.sheet_to_json(sheet,{header:1,defval:""});if(rows.length<2){renderTriageView();return;}const headerIdx=findHeaderRow(rows);if(headerIdx===-1){triageTitle.textContent="Could not find header row";renderTriageView();return;}try{buildMaps(rows.slice(headerIdx+1),rows[headerIdx]);}catch(err){triageTitle.textContent=err.message;renderTriageView();return;}populateFilters();captureInitialMismatches();buildIssueList();updateChangesTray();selectedAssetNumber=null;renderAssetList();renderTriageView();};reader.readAsArrayBuffer(file);}
@@ -1609,7 +1654,6 @@ existingAssetSelectCancel.addEventListener("click",closeExistingAssetSelectModal
 existingAssetSelectModal.addEventListener("click",e=>{if(e.target===existingAssetSelectModal||e.target.classList.contains("modal-backdrop"))closeExistingAssetSelectModal();});
 existingAssetSearch.addEventListener("input",renderExistingList);
 existingAssetItemFilter.addEventListener("change",renderExistingList);
-if(missingSlotActionCancel)missingSlotActionCancel.addEventListener("click",dismissSlotBar);
 orphanParentSelectCancel.addEventListener("click",closeOrphanParentSelectModal);
 orphanParentSelectModal.addEventListener("click",e=>{if(e.target===orphanParentSelectModal||e.target.classList.contains("modal-backdrop"))closeOrphanParentSelectModal();});
 orphanParentSearch.addEventListener("input",renderOrphanList);
