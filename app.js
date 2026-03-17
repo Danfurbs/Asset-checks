@@ -79,7 +79,7 @@ let lastRemovedPlaceholder = null, undoToastTimeoutId = null, undoToastHandler =
 let referenceTrees = [], referenceNameCodes = [], referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set(), referenceChildMap = new Map(), referenceAssociatedMap = new Map();
 let issueList = [], issueIndex = -1;
-let viewMode = "template";   // "template" | "sidebyside"
+let viewMode = "sidebyside";
 let showAssoc = false;
 let zoom = 1, panX = 0, panY = 0;
 let isPanning = false, panStartX = 0, panStartY = 0, panOriginX = 0, panOriginY = 0;
@@ -172,8 +172,7 @@ function isReferenceMismatch(asset,parentOverride=null) {
   if(referenceIgnoredCodes.has(code)) return false;
   const pNum=parentOverride!==null?parentOverride:asset.parentAssetNumber;
   if(!pNum) return (referenceParentMap.get(code)||new Set()).size>0;
-  const p=assetMap.get(pNum); if(!p) return true;
-  const pCode=extractNameCode(p.itemNameCodeDesc);
+  const pCode=getParentCodeByRef(pNum);
   if(!pCode||!referenceNameCodes.includes(pCode)) return false;
   return !(referenceParentMap.get(code)||new Set()).has(pCode);
 }
@@ -395,6 +394,7 @@ function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,
   // warning badges
   if(isMismatch)               { g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#dc2626"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"!"})); }
   else if(hasMissing||isOrph)  { g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#f59e0b"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"!"})); }
+  else if(shouldShowTick(asset)){ g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#16a34a"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"✓"})); }
 
   return g;
 }
@@ -403,25 +403,24 @@ function makeGhostCard(refNode, x, y, { variant="missing" }={}) {
   const codes=(refNode.nameCodes||[]).join("/");
   const optional=!!refNode.optional;
   const paletteByVariant={
-    missing:{ optionalBg:"#f9fafb", requiredBg:"#fef3c7", optionalBorder:"#d1d5db", requiredBorder:"#fcd34d", optionalText:"#6b7280", requiredText:"#92400e", title:"Missing" },
-    placeholder:{ optionalBg:"#f0f9ff", requiredBg:"#ecfeff", optionalBorder:"#7dd3fc", requiredBorder:"#22d3ee", optionalText:"#0369a1", requiredText:"#0e7490", title:"Placeholder" }
+    present:{bg:"#f0fdf4",border:"#22c55e",text:"#166534",badge:"#16a34a",statusFill:"#16a34a",statusIcon:"✓"},
+    placeholder:{bg:"#fffbeb",border:"#f59e0b",text:"#92400e",badge:"#d97706",statusFill:"#f59e0b",statusIcon:"◔"},
+    missing:{bg:"#fef2f2",border:"#ef4444",text:"#991b1b",badge:"#dc2626",statusFill:"#ef4444",statusIcon:"✕"}
   };
   const palette=paletteByVariant[variant]||paletteByVariant.missing;
-  const bg=optional?palette.optionalBg:palette.requiredBg;
-  const border=optional?palette.optionalBorder:palette.requiredBorder;
-  const text=optional?palette.optionalText:palette.requiredText;
   const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:"tree-node-g"});
-  g.appendChild(svgEl("rect",{width:NW,height:NH,rx:10,fill:bg,stroke:border,"stroke-width":1.5,"stroke-dasharray":optional?"6,3":"none"}));
-  g.appendChild(svgEl("rect",{x:8,y:8,width:46,height:17,rx:8,fill:border,opacity:"0.25"}));
-  g.appendChild(Object.assign(svgEl("text",{x:31,y:20,"text-anchor":"middle","font-size":9,"font-weight":700,fill:border,"dominant-baseline":"middle"}),{textContent:codes.slice(0,8)}));
-  g.appendChild(Object.assign(svgEl("text",{x:62,y:20,"font-size":10,"font-weight":700,fill:text,"dominant-baseline":"middle"}),{textContent:palette.title}));
-  g.appendChild(Object.assign(svgEl("text",{x:8,y:42,"font-size":10,fill:text}),{textContent:(refNode.title||"").slice(0,24)}));
-  g.appendChild(Object.assign(svgEl("text",{x:8,y:68,"font-size":9,fill:border,"font-weight":600}),{textContent:optional?"Optional":"Required"}));
+  g.appendChild(svgEl("rect",{width:NW,height:NH,rx:10,fill:palette.bg,stroke:palette.border,"stroke-width":1.5,"stroke-dasharray":optional?"6,3":"none"}));
+  g.appendChild(svgEl("rect",{x:8,y:8,width:46,height:17,rx:8,fill:palette.badge,opacity:"0.18"}));
+  g.appendChild(Object.assign(svgEl("text",{x:31,y:20,"text-anchor":"middle","font-size":9,"font-weight":700,fill:palette.badge,"dominant-baseline":"middle"}),{textContent:codes.slice(0,8)}));
+  g.appendChild(Object.assign(svgEl("text",{x:8,y:42,"font-size":10,fill:palette.text}),{textContent:(refNode.title||"").slice(0,24)}));
+  g.appendChild(Object.assign(svgEl("text",{x:8,y:68,"font-size":9,fill:palette.badge,"font-weight":600}),{textContent:optional?"Optional":"Required"}));
+  g.appendChild(svgEl("circle",{cx:NW-10,cy:11,r:7,fill:palette.statusFill}));
+  g.appendChild(Object.assign(svgEl("text",{x:NW-10,y:14,"text-anchor":"middle","font-size":8,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:palette.statusIcon}));
   return g;
 }
 
-function makeGhostCardEditable(refNode,x,y){
-  const g=makeGhostCard(refNode,x,y);
+function makeGhostCardEditable(refNode,x,y,opts={}){
+  const g=makeGhostCard(refNode,x,y,opts);
   g.classList.add("ghost-node-editable");
   g.setAttribute("aria-label",`Add missing ${(refNode.title||"asset").trim()||"asset"}`);
   return g;
@@ -488,9 +487,7 @@ function renderCanvas() {
   svgRoot.innerHTML="";
   if(!selectedAssetNumber) return;
   const rootId=findTreeRoot(selectedAssetNumber);
-
-  if(viewMode==="template") renderTemplateMode(rootId);
-  else                      renderSideBySide(rootId);
+  renderSideBySide(rootId);
 }
 
 function renderTemplateMode(rootId) {
@@ -643,13 +640,13 @@ function renderSideBySide(rootId) {
 
   let minX=Infinity;
   realPos.forEach(({x})=>{minX=Math.min(minX,x-NW/2);});
-  const rOffX=(SIDE_GAP/2)-minX;
+  const rOffX=(-SIDE_GAP/2)-(Math.max(...Array.from(realPos.values()).map(p=>p.x+NW/2)));
 
   let tOffX=0;
   if(tPos){
-    let tMaxX=-Infinity;
-    tPos.forEach(({x})=>{tMaxX=Math.max(tMaxX,x+NW/2);});
-    tOffX=(-SIDE_GAP/2)-tMaxX;
+    let tMinX=Infinity;
+    tPos.forEach(({x})=>{tMinX=Math.min(tMinX,x-NW/2);});
+    tOffX=(SIDE_GAP/2)-tMinX;
   }
 
   const corr=svgEl("g");
@@ -660,8 +657,8 @@ function renderSideBySide(rootId) {
     function walkT(n){
       const p=tPos.get(n.tid); if(!p) return;
       n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x+tOffX,p.y+NH,cp.x+tOffX,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
-      const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null;
-      const card=placeholder?makePlaceholderCardEditable(placeholder,p.x+tOffX,p.y):makeGhostCardEditable(n.refNode,p.x+tOffX,p.y);
+      const variant=n.assetId?"present":(n.placeholderId?"placeholder":"missing");
+      const card=makeGhostCardEditable(n.refNode,p.x+tOffX,p.y,{variant});
       if(n.parentAssetId){
         card.setAttribute("data-template-tid", n.tid);
         ghostDropTargets.set(n.tid, { node: n, svgX: p.x + tOffX, svgY: p.y });
@@ -675,7 +672,7 @@ function renderSideBySide(rootId) {
     }
     walkT(tmpl);
     drawCorrespondenceLines(tmpl, tPos, realPos, tOffX, rOffX, corr);
-    const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":tOffX,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference template"});
+    const lblT=Object.assign(svgEl("text",{"text-anchor":"middle","x":tOffX,"y":-20,"font-size":11,"font-weight":700,fill:"#94a3b8"}),{textContent:"Reference"});
     tn.appendChild(lblT);
   }
 
@@ -1665,7 +1662,6 @@ backToTriage.addEventListener("click",renderTriageView);
 prevIssue.addEventListener("click",()=>{if(issueIndex>0){issueIndex--;selectAsset(issueList[issueIndex]);}});
 nextIssue.addEventListener("click",()=>{if(issueIndex<issueList.length-1){issueIndex++;selectAsset(issueList[issueIndex]);}});
 referenceTreeSelect.addEventListener("change",e=>{const t=referenceTrees.find(r=>r.id===e.target.value);if(t)updateReferenceTree(t);});
-viewModeToggle.querySelectorAll(".mode-btn").forEach(btn=>{btn.addEventListener("click",()=>{viewMode=btn.dataset.mode;viewModeToggle.querySelectorAll(".mode-btn").forEach(b=>b.classList.toggle("active",b===btn));hasFit=false;renderCanvas();});});
 assocToggle.addEventListener("click",()=>{showAssoc=!showAssoc;assocToggle.classList.toggle("active",showAssoc);hasFit=false;renderCanvas();});
 exportButton.addEventListener("click",exportChanges);
 parentSelectCancel.addEventListener("click",()=>closeModal(parentSelectModal));
