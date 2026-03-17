@@ -78,6 +78,7 @@ let placeholderChildrenMap = new Map();
 let lastRemovedPlaceholder = null, undoToastTimeoutId = null, undoToastHandler = null;
 let referenceTrees = [], referenceNameCodes = [], referenceParentMap = new Map();
 let referenceIgnoredCodes = new Set(), referenceChildMap = new Map(), referenceAssociatedMap = new Map();
+let referenceCodeMetaMap = new Map();
 let issueList = [], issueIndex = -1;
 let viewMode = "sidebyside";
 let showAssoc = false;
@@ -117,7 +118,7 @@ const COLUMN_ALIASES = {
   assetEndMileage:       ["Asset End Mileage","End Mileage","Asset End Mile"],
   itemNameCodeDesc:      ["Item Name Code & Desc","Item Name Code and Desc","Item Name Code Desc"],
 };
-const EXPORT_HEADERS = ["EquipNo","EquipGrpId","EquipClass","PlantNo","PlantCode0","PlantCode1","PlantCode2","PlantCode3","PlantCode4","PlantCode5","ParentEquipRef","ItemNameCode","EquipNoD1","EquipNoD2","EquipStatus","Active Flag","Equipment Type (0)","Region (1)","Maintenance Responsibility (2)","Sub Discipline (3)","Disclipline (4)","Geographical Delivery Unit (5)","Route (6)","Position (7)","Special Equipment Status (8)","Signal Sighting Cable Ride (9)","Maintaining Delivery Unit (10)","Asset Out Of Use Status (11)","Maintenance Engineer (12)","Engineering Support Group (13)","External Ownership (14)","Section Manager (15)","ConAstSegSt","ConAstSegEn","SegmentUom","CostSegLgth","InputBy","OperatorId","DstrctCode","CostingFlag","EquipLocation","Colloquial_1","Colloquial_2","Colloquial_3","Colloquial_4","Colloquial_5","Colloquial_6","RARUNID","RARDECID","RAILID","WO_Grouping_Eqp_ID","Attrib_Name1","Attrib_Value1","Attrib_Name2","Attrib_Value2","Attrib_Name3","Attrib_Value3","Attrib_Name4","Attrib_Value4","Attrib_Name5","Attrib_Value5","Attrib_Name6","Attrib_Value6","Attrib_Name7","Attrib_Value7","Attrib_Name8","Attrib_Value8","ADM_BatchRef","ADM_BatchRef_Seq","ASSETLAT","ASSETLONG","ASSETELAT","ASSETELONG","Date of Installation","Date of Retirement","Year of Installation","Year of Retirement","Result","Date / Time Stamp"];
+const EXPORT_HEADERS = ["details","EquipNo","EquipGrpId","EquipClass","PlantNo","PlantCode0","PlantCode1","PlantCode2","PlantCode3","PlantCode4","PlantCode5","ParentEquipRef","ItemNameCode","EquipNoD1","EquipNoD2","EquipStatus","Active Flag","Equipment Type (0)","Region (1)","Maintenance Responsibility (2)","Sub Discipline (3)","Disclipline (4)","Geographical Delivery Unit (5)","Route (6)","Position (7)","Special Equipment Status (8)","Signal Sighting Cable Ride (9)","Maintaining Delivery Unit (10)","Asset Out Of Use Status (11)","Maintenance Engineer (12)","Engineering Support Group (13)","External Ownership (14)","Section Manager (15)","ConAstSegSt","ConAstSegEn","SegmentUom","CostSegLgth","InputBy","OperatorId","DstrctCode","CostingFlag","EquipLocation","Colloquial_1","Colloquial_2","Colloquial_3","Colloquial_4","Colloquial_5","Colloquial_6","RARUNID","RARDECID","RAILID","WO_Grouping_Eqp_ID","Attrib_Name1","Attrib_Value1","Attrib_Name2","Attrib_Value2","Attrib_Name3","Attrib_Value3","Attrib_Name4","Attrib_Value4","Attrib_Name5","Attrib_Value5","Attrib_Name6","Attrib_Value6","Attrib_Name7","Attrib_Value7","Attrib_Name8","Attrib_Value8","ADM_BatchRef","ADM_BatchRef_Seq","ASSETLAT","ASSETLONG","ASSETELAT","ASSETELONG","Date of Installation","Date of Retirement","Year of Installation","Year of Retirement","Result","Date / Time Stamp"];
 
 // ── Column helpers ────────────────────────────────────────────────────
 function normalizeHeader(v) { return String(v||"").replace(/\u00a0/g," ").replace(/[^a-z0-9]+/gi," ").replace(/\s+/g," ").trim().toLowerCase(); }
@@ -1298,7 +1299,7 @@ function getReassignmentCandidates(num){
   const placeholderCandidates=getAssignablePlaceholdersForAsset(asset).map(placeholder=>({type:"placeholder",placeholder}));
   return [...realParentCandidates,...placeholderCandidates];
 }
-function buildPlaceholderOptions(groups){const opts=[];groups.forEach(g=>{const codes=Array.from(g.codes).sort();codes.forEach(code=>opts.push({code,groupLabel:codes.join(" or ")}));});return opts;}
+function buildPlaceholderOptions(groups){const opts=[];groups.forEach(g=>{const codes=Array.from(g.codes).sort();codes.forEach(code=>{const meta=getReferenceMetaForCode(code);opts.push({code,groupLabel:codes.join(" or "),equipGrpId:meta.equipGrpId||"",detail:meta.detail||""});});});return opts;}
 function getTemplateNodeGroups(node){
   const codes=(node?.codes||[]).filter(Boolean);
   if(!codes.length) return [];
@@ -1375,7 +1376,7 @@ function buildPlaceholderOptionButton(placeholder, onSelect) {
 function openPlaceholderSelectModal(parentNum,groups,templateTid=null){
   placeholderSelectList.innerHTML="";
   if(placeholderSelectTitle)placeholderSelectTitle.textContent=`Add placeholder for ${parentNum}`;
-  buildPlaceholderOptions(groups).forEach(opt=>{const btn=document.createElement("button");btn.type="button";btn.className="modal-option";btn.textContent=opt.code;const s=document.createElement("small");s.textContent=`Group: ${opt.groupLabel}`;btn.appendChild(s);btn.addEventListener("click",()=>{addPlaceholderAsset(parentNum,opt.code,{ flashEl: templateTid ? svgRoot.querySelector(`[data-template-tid="${templateTid}"]`) : null });closeModal(placeholderSelectModal);});placeholderSelectList.appendChild(btn);});
+  buildPlaceholderOptions(groups).forEach(opt=>{const btn=document.createElement("button");btn.type="button";btn.className="modal-option";btn.textContent=opt.code;const s=document.createElement("small");const details=[`Group: ${opt.groupLabel}`];if(opt.equipGrpId)details.push(`EquipGrpId: ${opt.equipGrpId}`);if(opt.detail)details.push(`Detail: ${opt.detail}`);s.textContent=details.join(" • ");btn.appendChild(s);btn.addEventListener("click",()=>{addPlaceholderAsset(parentNum,opt.code,{ flashEl: templateTid ? svgRoot.querySelector(`[data-template-tid="${templateTid}"]`) : null });closeModal(placeholderSelectModal);});placeholderSelectList.appendChild(btn);});
   openModal(placeholderSelectModal);
 }
 function dismissSlotBar(){
@@ -1590,13 +1591,17 @@ function collectIgnoredNameCodes(node){const codes=[];if(!node)return codes;if(n
 function buildReferenceParentMap(node,parentCodes=[]){const map=new Map();if(!node)return map;const cur=(node.nameCodes||[]).map(c=>c.toUpperCase());cur.forEach(c=>{if(!map.has(c))map.set(c,new Set());parentCodes.forEach(p=>map.get(c).add(p));});(node.children||[]).forEach(ch=>{buildReferenceParentMap(ch,cur).forEach((v,k)=>{if(!map.has(k))map.set(k,new Set());v.forEach(i=>map.get(k).add(i));});});return map;}
 function buildReferenceChildMap(node){const map=new Map();if(!node)return map;const cur=(node.nameCodes||[]).map(c=>c.toUpperCase());const direct=[];(node.children||[]).forEach(ch=>{if(ch.nameCodes?.length)direct.push({codes:new Set(ch.nameCodes.map(c=>c.toUpperCase())),optional:Boolean(ch.optional)});buildReferenceChildMap(ch).forEach((v,k)=>{if(!map.has(k))map.set(k,[]);map.get(k).push(...v);});});if(cur.length&&direct.length)cur.forEach(c=>{if(!map.has(c))map.set(c,[]);map.get(c).push(...direct);});return map;}
 function buildReferenceAssociatedMap(assocs){const map=new Map();(assocs||[]).forEach(link=>{const from=(link.fromCodes||[]).map(c=>c.toUpperCase());const to=(link.toCodes||[]).map(c=>c.toUpperCase());const bi=link.bidirectional!==false;from.forEach(f=>{if(!map.has(f))map.set(f,new Set());to.forEach(t=>map.get(f).add(t));});if(bi)to.forEach(t=>{if(!map.has(t))map.set(t,new Set());from.forEach(f=>map.get(t).add(f));});});return map;}
+function buildReferenceCodeMetaMap(node){const map=new Map();if(!node)return map;const equipGrpId=node.equipGrpId||"";const detail=node.detail||node.title||"";(node.nameCodes||[]).forEach(code=>{const key=String(code||"").toUpperCase();if(!key)return;if(!map.has(key))map.set(key,{equipGrpId,detail});});(node.children||[]).forEach(ch=>{buildReferenceCodeMetaMap(ch).forEach((meta,code)=>{if(!map.has(code))map.set(code,meta);});});return map;}
+function getReferenceMetaForCode(code){if(!code)return {equipGrpId:"",detail:""};return referenceCodeMetaMap.get(String(code).toUpperCase())||{equipGrpId:"",detail:""};}
 function captureInitialMismatches(){initialMismatchAssets=new Set();assets.forEach(a=>{if(isReferenceMismatch(a,originalParentMap.get(a.assetNumber)??null))initialMismatchAssets.add(a.assetNumber);});}
-function updateReferenceTree(tree){if(!tree?.root)return;referenceNameCodes=collectReferenceNameCodes(tree.root);referenceParentMap=buildReferenceParentMap(tree.root);referenceIgnoredCodes=collectIgnoredNameCodes(tree.root);referenceChildMap=buildReferenceChildMap(tree.root);referenceAssociatedMap=buildReferenceAssociatedMap(tree.associations||[]);captureInitialMismatches();buildIssueList();renderAssetList();renderTriageView();}
+function updateReferenceTree(tree){if(!tree?.root)return;referenceNameCodes=collectReferenceNameCodes(tree.root);referenceParentMap=buildReferenceParentMap(tree.root);referenceIgnoredCodes=collectIgnoredNameCodes(tree.root);referenceChildMap=buildReferenceChildMap(tree.root);referenceAssociatedMap=buildReferenceAssociatedMap(tree.associations||[]);referenceCodeMetaMap=buildReferenceCodeMetaMap(tree.root);captureInitialMismatches();buildIssueList();renderAssetList();renderTriageView();}
 function loadReferenceTrees(){fetch("reference-trees.json",{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error();return r.json();}).then(data=>{referenceTrees=Array.isArray(data?.trees)?data.trees:[];referenceTreeSelect.innerHTML="";referenceTrees.forEach(t=>{const o=document.createElement("option");o.value=t.id;o.textContent=t.label;referenceTreeSelect.appendChild(o);});if(referenceTrees.length){referenceTreeSelect.value=referenceTrees[0].id;updateReferenceTree(referenceTrees[0]);}}).catch(()=>{});}
 
 // ── Export ────────────────────────────────────────────────────────────
 function buildExportRows(){
   const rows=[EXPORT_HEADERS];
+  const detailsIdx=EXPORT_HEADERS.indexOf("details");
+  const equipNoIdx=EXPORT_HEADERS.indexOf("EquipNo");
   const parentIdx=EXPORT_HEADERS.indexOf("ParentEquipRef");
   const itemIdx=EXPORT_HEADERS.indexOf("ItemNameCode");
   const noteIdx=EXPORT_HEADERS.indexOf("Colloquial_1");
@@ -1604,7 +1609,8 @@ function buildExportRows(){
     const a=assetMap.get(num);
     if(!a) return;
     const row=Array(EXPORT_HEADERS.length).fill("");
-    row[0]=a.assetNumber;
+    if(equipNoIdx!==-1) row[equipNoIdx]=a.assetNumber;
+    if(detailsIdx!==-1) row[detailsIdx]="Parent update";
     if(a.parentAssetNumber?.startsWith("__ph__")){
       const placeholderId=a.parentAssetNumber.slice(6);
       const placeholder=placeholderAssets.find(ph=>ph.id===placeholderId);
@@ -1616,12 +1622,29 @@ function buildExportRows(){
     }
     rows.push(row);
   });
+  return rows;
+}
+function buildCreateAssetsRows(){
+  const rows=[EXPORT_HEADERS];
+  const detailsIdx=EXPORT_HEADERS.indexOf("details");
+  const equipGrpIdIdx=EXPORT_HEADERS.indexOf("EquipGrpId");
+  const equipClassIdx=EXPORT_HEADERS.indexOf("EquipClass");
+  const itemIdx=EXPORT_HEADERS.indexOf("ItemNameCode");
+  const equipStatusIdx=EXPORT_HEADERS.indexOf("EquipStatus");
+  const activeFlagIdx=EXPORT_HEADERS.indexOf("Active Flag");
   placeholderAssets.slice().sort((a,b)=>{
     const pc=a.parentAssetNumber.localeCompare(b.parentAssetNumber);
     return pc||a.itemNameCode.localeCompare(b.itemNameCode);
   }).forEach(ph=>{
     const row=Array(EXPORT_HEADERS.length).fill("");
-    row[itemIdx]=ph.itemNameCode;
+    const code=(ph.itemNameCode||"").toUpperCase();
+    const meta=getReferenceMetaForCode(code);
+    if(detailsIdx!==-1) row[detailsIdx]=meta.detail||"";
+    if(equipGrpIdIdx!==-1) row[equipGrpIdIdx]=meta.equipGrpId||"";
+    if(equipClassIdx!==-1) row[equipClassIdx]=code.slice(0,2);
+    if(itemIdx!==-1) row[itemIdx]=code;
+    if(equipStatusIdx!==-1) row[equipStatusIdx]="FM";
+    if(activeFlagIdx!==-1) row[activeFlagIdx]="Y";
     rows.push(row);
   });
   return rows;
@@ -1647,6 +1670,8 @@ function exportChanges(){
   XLSX.utils.book_append_sheet(wb,ws,"ParentChanges");
   const ws2=XLSX.utils.aoa_to_sheet(buildPlaceholderAssignmentRows());
   XLSX.utils.book_append_sheet(wb,ws2,"PlaceholderAssignments");
+  const ws3=XLSX.utils.aoa_to_sheet(buildCreateAssetsRows());
+  XLSX.utils.book_append_sheet(wb,ws3,"CreateAssets");
   XLSX.writeFile(wb,"asset-parent-changes.xlsx");
 }
 
