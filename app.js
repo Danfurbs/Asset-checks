@@ -498,7 +498,7 @@ function renderTemplateMode(rootId) {
   if(!tree?.root) return;
   tplCounter=0;
   const rootCodes=(tree.root.nameCodes||[]).map(c=>c.toUpperCase());
-  const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&!a.parentAssetNumber&&subtreeIds(rootId).has(a.assetNumber));
+  const rootAsset=assets.find(a=>rootCodes.includes(extractNameCode(a.itemNameCodeDesc))&&subtreeIds(rootId).has(a.assetNumber));
   const tmpl=buildTemplateNode(tree.root,{assetId:rootAsset?.assetNumber||null},null,{usedAssetIds:new Set(),usedPlaceholderIds:new Set(),scopeRootId:rootId});
   const pos=layoutTemplateTree(tmpl);
 
@@ -511,36 +511,15 @@ function renderTemplateMode(rootId) {
       const cp=pos.get(c.tid); if(!cp) return;
       edges.appendChild(makeCurve(p.x,p.y+NH,cp.x,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId));
     });
-    const asset=n.assetId?assetMap.get(n.assetId):null;
     const placeholder=n.placeholderId?placeholderAssets.find(p=>p.id===n.placeholderId):null;
-    let card;
-    if(asset){
-      card=makeNodeCard(asset,p.x,p.y,n.assetId===selectedAssetNumber,{
-        hasMissing:getMissingReferenceChildren(asset).length>0,
-        isMismatch:isReferenceMismatch(asset),
-        isOrph:isOrphaned(asset)
+    const card=placeholder?makePlaceholderCardEditable(placeholder,p.x,p.y):makeGhostCardEditable(n.refNode,p.x,p.y);
+    card.setAttribute("data-template-tid", n.tid);
+    if(n.parentAssetId){
+      ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
+      card.addEventListener("click", e => {
+        e.stopPropagation();
+        if (p) showInlineSlotBar(n, p.x, p.y);
       });
-      card.addEventListener("click",()=>selectAsset(n.assetId));
-    } else if(placeholder){
-      card=makePlaceholderCardEditable(placeholder,p.x,p.y);
-      card.setAttribute("data-template-tid", n.tid);
-      if (n.parentAssetId) {
-        ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
-        card.addEventListener("click", e => {
-          e.stopPropagation();
-          if (p) showInlineSlotBar(n, p.x, p.y);
-        });
-      }
-    } else {
-      card=makeGhostCardEditable(n.refNode,p.x,p.y);
-      card.setAttribute("data-template-tid", n.tid);
-      if(n.parentAssetId){
-        ghostDropTargets.set(n.tid, { node: n, svgX: p.x, svgY: p.y });
-        card.addEventListener("click", e => {
-          e.stopPropagation();
-          if (p) showInlineSlotBar(n, p.x, p.y);
-        });
-      }
     }
     nodes.appendChild(card);
     n.children.forEach(walk);
@@ -608,10 +587,46 @@ function drawCorrespondenceLines(tmplNode, tPos, realPos, tOffX, rOffX, edgesGro
   tmplNode.children.forEach(c => drawCorrespondenceLines(c, tPos, realPos, tOffX, rOffX, edgesGroup));
 }
 
+function buildActualTreeMaps() {
+  const childMap = new Map();
+  const parentMap = new Map();
+
+  assets.forEach(a=>{
+    if(!a?.assetNumber) return;
+    if(!childMap.has(a.assetNumber)) childMap.set(a.assetNumber, []);
+  });
+
+  placeholderAssets.forEach(ph=>{
+    const ref = `__ph__${ph.id}`;
+    if(!childMap.has(ref)) childMap.set(ref, []);
+  });
+
+  assets.forEach(a=>{
+    const parentRef = a?.parentAssetNumber;
+    if(!parentRef) return;
+    if(!childMap.has(parentRef)) return;
+    const siblings = childMap.get(parentRef);
+    if(!siblings.includes(a.assetNumber)) siblings.push(a.assetNumber);
+    parentMap.set(a.assetNumber, parentRef);
+  });
+
+  placeholderAssets.forEach(ph=>{
+    const parentRef = ph?.parentAssetNumber;
+    const ref = `__ph__${ph.id}`;
+    if(!parentRef || !childMap.has(parentRef)) return;
+    const siblings = childMap.get(parentRef);
+    if(!siblings.includes(ref)) siblings.push(ref);
+    parentMap.set(ref, parentRef);
+  });
+
+  return { childMap, parentMap };
+}
+
 function renderSideBySide(rootId) {
   tplCounter=0;
   const tree=getActiveReferenceTree();
-  let realPos=layoutTree(rootId,childrenMap);
+  const { childMap:actualChildMap, parentMap:actualParentMap } = buildActualTreeMaps();
+  let realPos=layoutTree(rootId,actualChildMap);
   const SIDE_GAP=80;
 
   let tmpl=null;
@@ -645,14 +660,9 @@ function renderSideBySide(rootId) {
     function walkT(n){
       const p=tPos.get(n.tid); if(!p) return;
       n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x+tOffX,p.y+NH,cp.x+tOffX,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
-      const asset=n.assetId?assetMap.get(n.assetId):null;
       const placeholder=n.placeholderId?placeholderAssets.find(ph=>ph.id===n.placeholderId):null;
-      let card=asset
-        ?makeNodeCard(asset,p.x+tOffX,p.y,n.assetId===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)})
-        :placeholder?makePlaceholderCardEditable(placeholder,p.x+tOffX,p.y):makeGhostCardEditable(n.refNode,p.x+tOffX,p.y);
-      if(asset){
-        card.addEventListener("click",()=>selectAsset(n.assetId));
-      } else if(n.parentAssetId){
+      const card=placeholder?makePlaceholderCardEditable(placeholder,p.x+tOffX,p.y):makeGhostCardEditable(n.refNode,p.x+tOffX,p.y);
+      if(n.parentAssetId){
         card.setAttribute("data-template-tid", n.tid);
         ghostDropTargets.set(n.tid, { node: n, svgX: p.x + tOffX, svgY: p.y });
         card.addEventListener("click", e => {
@@ -670,9 +680,21 @@ function renderSideBySide(rootId) {
   }
 
   realPos.forEach(({x,y},id)=>{
-    const asset=assetMap.get(id); const parent=asset?.parentAssetNumber?realPos.get(asset.parentAssetNumber):null;
+    const parentRef=actualParentMap.get(id)||null;
+    const parent=parentRef?realPos.get(parentRef):null;
     if(parent) re.appendChild(makeCurve(parent.x+rOffX,parent.y+NH,x+rOffX,y));
-    const card=makeNodeCard(asset,x+rOffX,y,id===selectedAssetNumber,{hasMissing:asset&&getMissingReferenceChildren(asset).length>0,isMismatch:asset&&isReferenceMismatch(asset),isOrph:asset&&isOrphaned(asset)});
+
+    if(isPlaceholderRef(id)){
+      const placeholder=getPlaceholderByRef(id);
+      if(!placeholder) return;
+      const card=makePlaceholderCardEditable(placeholder,x+rOffX,y);
+      rn.appendChild(card);
+      return;
+    }
+
+    const asset=assetMap.get(id);
+    if(!asset) return;
+    const card=makeNodeCard(asset,x+rOffX,y,id===selectedAssetNumber,{hasMissing:getMissingReferenceChildren(asset).length>0,isMismatch:isReferenceMismatch(asset),isOrph:isOrphaned(asset)});
     card.addEventListener("click",()=>selectAsset(id));
     rn.appendChild(card);
   });
