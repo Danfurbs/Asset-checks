@@ -69,8 +69,7 @@
             </div>
 
             <div class="view-mode-toggle" id="viewModeToggle">
-              <button type="button" class="mode-btn active" data-mode="tree">Tree</button>
-              <button type="button" class="mode-btn" data-mode="template">Template</button>
+              <button type="button" class="mode-btn active" data-mode="template">Template</button>
               <button type="button" class="mode-btn" data-mode="sidebyside">Side by side</button>
             </div>
 
@@ -95,6 +94,9 @@
                 <filter id="selectedShadow" x="-30%" y="-30%" width="160%" height="160%">
                   <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#0ea5e9" flood-opacity="0.35"/>
                 </filter>
+                <marker id="corrArrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                  <path d="M0,0 L6,3 L0,6 Z" fill="#a5b4fc"/>
+                </marker>
               </defs>
               <g id="svgRoot"></g>
             </svg>
@@ -171,17 +173,6 @@
         </div>
         <div id="existingAssetSelectList" class="modal-list"></div>
         <div class="modal-actions"><button type="button" id="existingAssetSelectCancel" class="btn-ghost">Cancel</button></div>
-      </div>
-    </div>
-
-
-    <div id="missingSlotActionModal" class="modal hidden" aria-hidden="true">
-      <div class="modal-backdrop"></div>
-      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="missingSlotActionTitle">
-        <h3 id="missingSlotActionTitle">Resolve missing slot</h3>
-        <p class="modal-description">Choose how to fill this missing equipment type.</p>
-        <div id="missingSlotActionList" class="modal-list"></div>
-        <div class="modal-actions"><button type="button" id="missingSlotActionCancel" class="btn-ghost">Cancel</button></div>
       </div>
     </div>
 
