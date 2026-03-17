@@ -359,17 +359,16 @@ function layoutTemplateTree(node) {
 }
 
 // ── SVG rendering helpers ─────────────────────────────────────────────
-function nodeColors(asset, selected, {isMismatch=false,hasMissing=false,isOrph=false}={}) {
+function nodeColors(asset, selected, {isMismatch=false,isOrph=false}={}) {
   if(selected)          return {border:"#0ea5e9",bg:"#e0f2fe",text:"#0c4a6e",badge:"#0ea5e9"};
   if(!asset)            return {border:"#d1d5db",bg:"#f9fafb",text:"#6b7280",badge:"#9ca3af"};
-  if(hasMissing)        return {border:"#ef4444",bg:"#fef2f2",text:"#991b1b",badge:"#dc2626"};
   if(isMismatch||isOrph)return {border:"#f59e0b",bg:"#fffbeb",text:"#92400e",badge:"#d97706"};
   if(isObsolete(asset)) return {border:"#f87171",bg:"#fff1f2",text:"#991b1b",badge:"#f87171"};
   return                {border:"#22c55e",bg:"#f0fdf4",text:"#166534",badge:"#16a34a"};
 }
 
 function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,isOrph=false}={}) {
-  const col=nodeColors(asset,selected,{hasMissing,isMismatch,isOrph});
+  const col=nodeColors(asset,selected,{isMismatch,isOrph});
   const cls=["tree-node-g"];
   if(asset?.parentAssetNumber?.startsWith("__ph__")) cls.push("placeholder-parented");
   const g=svgEl("g",{transform:`translate(${x-NW/2},${y})`,class:cls.join(" "),style:"cursor:pointer"});
@@ -395,8 +394,7 @@ function makeNodeCard(asset, x, y, selected, {hasMissing=false,isMismatch=false,
   if(asset?.elr)         g.appendChild(Object.assign(svgEl("text",{x:NW-8,y:68,"font-size":9,fill:"#94a3b8","text-anchor":"end"}),{textContent:asset.elr}));
 
   // warning badges
-  if(hasMissing)               { g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#ef4444"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"✕"})); }
-  else if(isMismatch||isOrph)  { g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#f59e0b"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"!"})); }
+  if(isMismatch||isOrph||hasMissing){ g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#f59e0b"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"!"})); }
   else if(shouldShowTick(asset)){ g.appendChild(svgEl("circle",{cx:NW-9,cy:9,r:7,fill:"#16a34a"})); g.appendChild(Object.assign(svgEl("text",{x:NW-9,y:13,"text-anchor":"middle","font-size":9,fill:"#fff","font-weight":700,"dominant-baseline":"middle"}),{textContent:"✓"})); }
 
   return g;
