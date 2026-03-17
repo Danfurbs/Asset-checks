@@ -405,6 +405,7 @@ function makeGhostCard(refNode, x, y, { variant="missing" }={}) {
   const optional=!!refNode.optional;
   const paletteByVariant={
     present:{bg:"#f0fdf4",border:"#22c55e",text:"#166534",badge:"#16a34a",statusFill:"#16a34a",statusIcon:"✓"},
+    linked:{bg:"#fffbeb",border:"#f59e0b",text:"#92400e",badge:"#d97706",statusFill:"#f59e0b",statusIcon:"!"},
     placeholder:{bg:"#eff6ff",border:"#3b82f6",text:"#1d4ed8",badge:"#2563eb",statusFill:"#3b82f6",statusIcon:"◔"},
     missing:{bg:"#fef2f2",border:"#ef4444",text:"#991b1b",badge:"#dc2626",statusFill:"#ef4444",statusIcon:"✕"}
   };
@@ -658,7 +659,11 @@ function renderSideBySide(rootId) {
     function walkT(n){
       const p=tPos.get(n.tid); if(!p) return;
       n.children.forEach(c=>{ const cp=tPos.get(c.tid);if(!cp)return; te.appendChild(makeCurve(p.x+tOffX,p.y+NH,cp.x+tOffX,cp.y,"#94a3b8",!c.assetId&&!c.placeholderId)); });
-      const variant=n.assetId?"present":(n.placeholderId?"placeholder":"missing");
+      let variant=n.assetId?"present":(n.placeholderId?"placeholder":"missing");
+      if(n.assetId&&n.parentAssetId){
+        const asset=assetMap.get(n.assetId);
+        if(asset&&isReferenceMismatch(asset,n.parentAssetId)) variant="linked";
+      }
       const card=makeGhostCardEditable(n.refNode,p.x+tOffX,p.y,{variant});
       if(n.parentAssetId){
         card.setAttribute("data-template-tid", n.tid);
