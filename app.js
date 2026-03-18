@@ -1266,7 +1266,7 @@ function getCandidateAssetsForGroups(groups, parentNum, { allowAssigned = false 
   const allowed = new Set();
   groups.forEach(g => g.codes.forEach(c => allowed.add(c)));
   return assets.filter(a => {
-    if (!a || a.assetNumber === parentNum) return false;
+    if (!a || a.assetNumber === parentNum || isObsolete(a)) return false;
     if (allowAssigned && isDescendant(a.assetNumber, parentNum)) return false;
     const c = extractNameCode(a.itemNameCodeDesc);
     if (!c || !allowed.has(c)) return false;
