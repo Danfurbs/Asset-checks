@@ -12,6 +12,7 @@ const elrFilter               = document.getElementById("elrFilter");
 const assetClassFilter        = document.getElementById("assetClassFilter");
 const statusFilter            = document.getElementById("statusFilter");
 const hideObsoleteToggle      = document.getElementById("hideObsoleteToggle");
+const discountObsoleteToggle  = document.getElementById("discountObsoleteToggle");
 const errorOnlyToggle         = document.getElementById("errorOnlyToggle");
 const assetList               = document.getElementById("assetList");
 const listStatus              = document.getElementById("listStatus");
@@ -166,7 +167,15 @@ function buildMaps(rows, headers) {
 // ── Asset helpers ─────────────────────────────────────────────────────
 function extractNameCode(v) { const m=String(v||"").trim().match(/^[A-Za-z0-9]+/); return m?m[0].toUpperCase():""; }
 function isObsolete(a)  { return a?.assetStatus?.startsWith("OR"); }
-function isOrphaned(a)  { if(!a?.parentAssetNumber) return false; const p=assetMap.get(a.parentAssetNumber); return p?isObsolete(p):false; }
+function getParentAsset(asset,parentOverride=null) {
+  const ref=parentOverride!==null?parentOverride:asset?.parentAssetNumber;
+  return ref&&!isPlaceholderRef(ref)?assetMap.get(ref)||null:null;
+}
+function isMixedObsolescenceLink(asset,parentOverride=null) {
+  const parent=getParentAsset(asset,parentOverride);
+  return !!parent && isObsolete(asset)!==isObsolete(parent);
+}
+function isOrphaned(a)  { if(!a?.parentAssetNumber) return false; const p=getParentAsset(a); return p?isObsolete(p):false; }
 function isReferenceMismatch(asset,parentOverride=null) {
   const code=extractNameCode(asset.itemNameCodeDesc);
   if(!code||!referenceNameCodes.includes(code)) return false;
@@ -190,7 +199,19 @@ function getMissingReferenceChildGroups(asset) {
   return (referenceChildMap.get(code)||[]).filter(g=>!g.optional&&!Array.from(g.codes).some(c=>ex.has(c)));
 }
 function getMissingReferenceChildren(asset) { return getMissingReferenceChildGroups(asset).map(g=>Array.from(g.codes).join(" or ")); }
-function hasError(asset) { return isReferenceMismatch(asset)||getMissingReferenceChildren(asset).length>0||isOrphaned(asset); }
+function shouldDiscountObsoleteIssues(asset) {
+  if(!discountObsoleteToggle?.checked || !isObsolete(asset)) return false;
+  if(isMixedObsolescenceLink(asset)) return false;
+  return true;
+}
+function hasVisibleError(asset) {
+  const mismatch=isReferenceMismatch(asset);
+  const missing=getMissingReferenceChildren(asset).length>0;
+  const orphaned=isOrphaned(asset);
+  if(!mismatch&&!missing&&!orphaned) return false;
+  if(!shouldDiscountObsoleteIssues(asset)) return true;
+  return mismatch&&isMixedObsolescenceLink(asset);
+}
 function shouldShowTick(asset) { return initialMismatchAssets.has(asset.assetNumber)&&!isReferenceMismatch(asset); }
 function isDescendant(num,pot) { if(!num||!pot) return false; const ch=childrenMap.get(num)||[]; return ch.includes(pot)||ch.some(c=>isDescendant(c,pot)); }
 function isPlaceholderRef(ref){return typeof ref==="string"&&ref.startsWith("__ph__");}
@@ -1034,7 +1055,7 @@ function matchesFilters(asset) {
   if(!chk(assetClassFilter,asset.assetClass))return false;
   if(!chk(statusFilter,asset.assetStatus))return false;
   if(hideObsoleteToggle.checked&&isObsolete(asset))return false;
-  if(errorOnlyToggle.checked&&!hasError(asset))return false;
+  if(errorOnlyToggle.checked&&!hasVisibleError(asset))return false;
   return true;
 }
 function renderAssetList() {
@@ -1045,9 +1066,12 @@ function renderAssetList() {
     const li=document.createElement("li");
     const btn=document.createElement("button"); btn.type="button"; btn.className="asset-btn";
     if(asset.assetNumber===selectedAssetNumber) btn.classList.add("selected");
-    if(isReferenceMismatch(asset)){const b=mkBadge("danger","!");btn.appendChild(b);}
-    else if(getMissingReferenceChildren(asset).length){const b=mkBadge("warn","!");btn.appendChild(b);}
-    else if(isOrphaned(asset)){const b=mkBadge("purple","!");btn.appendChild(b);}
+    const mismatchVisible=isReferenceMismatch(asset)&&hasVisibleError(asset);
+    const missingVisible=getMissingReferenceChildren(asset).length&&hasVisibleError(asset);
+    const orphanVisible=isOrphaned(asset)&&hasVisibleError(asset);
+    if(mismatchVisible){const b=mkBadge("danger","!");btn.appendChild(b);}
+    else if(missingVisible){const b=mkBadge("warn","!");btn.appendChild(b);}
+    else if(orphanVisible){const b=mkBadge("purple","!");btn.appendChild(b);}
     else if(shouldShowTick(asset)){const b=mkBadge("success","✓");btn.appendChild(b);}
     const lbl=document.createElement("span"); lbl.className="asset-label";
     const desc=asset.assetDesc1||asset.assetDesc2||"";
@@ -1066,16 +1090,16 @@ function renderAssetList() {
 function mkBadge(type,text){const s=document.createElement("span");s.className=`badge badge-${type}`;s.textContent=text;return s;}
 
 // ── Triage ────────────────────────────────────────────────────────────
-function buildIssueList() { issueList=assets.filter(hasError).map(a=>a.assetNumber); }
+function buildIssueList() { issueList=assets.filter(hasVisibleError).map(a=>a.assetNumber); }
 
 function renderTriageView() {
   triageView.classList.remove("hidden"); treeCanvasView.classList.add("hidden");
   appBody.classList.remove("detail-open"); selectedAssetNumber=null; renderAssetList();
   if(!assets.length){triageTitle.textContent="Upload a file to begin";triageSubtitle.textContent="Your asset export will be validated against the selected reference tree.";triageStats.innerHTML="";triageIssueList.innerHTML="";return;}
-  const mismatches=assets.filter(a=>isReferenceMismatch(a));
-  const orphaned=assets.filter(a=>isOrphaned(a));
-  const missingCh=assets.filter(a=>getMissingReferenceChildren(a).length);
-  const clean=assets.filter(a=>!hasError(a)&&referenceNameCodes.includes(extractNameCode(a.itemNameCodeDesc)));
+  const mismatches=assets.filter(a=>isReferenceMismatch(a)&&hasVisibleError(a));
+  const orphaned=assets.filter(a=>isOrphaned(a)&&hasVisibleError(a));
+  const missingCh=assets.filter(a=>getMissingReferenceChildren(a).length&&hasVisibleError(a));
+  const clean=assets.filter(a=>!hasVisibleError(a)&&referenceNameCodes.includes(extractNameCode(a.itemNameCodeDesc)));
   const tree=getActiveReferenceTree();
   triageTitle.textContent=`${assets.length} assets loaded`;
   triageSubtitle.textContent=tree?`Validating against: ${tree.label}`:"No reference tree selected.";
@@ -1094,7 +1118,7 @@ function renderTriageView() {
       const idEl=document.createElement("div");idEl.className="issue-id";idEl.textContent=asset.assetNumber;
       const descEl=document.createElement("div");descEl.className="issue-desc";descEl.textContent=asset.assetDesc1||asset.assetDesc2||asset.itemNameCodeDesc||"";
       const tags=document.createElement("div");tags.className="issue-tags";
-      if(isReferenceMismatch(asset)){const t=document.createElement("span");t.className="issue-tag tag-mismatch";t.textContent="Mismatch";tags.appendChild(t);}
+      if(isReferenceMismatch(asset)){const t=document.createElement("span");t.className="issue-tag tag-mismatch";t.textContent=isObsolete(asset)&&isMixedObsolescenceLink(asset)?"Mismatch (mixed status)":"Mismatch";tags.appendChild(t);}
       if(isOrphaned(asset)){const t=document.createElement("span");t.className="issue-tag tag-orphaned";t.textContent="Orphaned";tags.appendChild(t);}
       getMissingReferenceChildren(asset).forEach(code=>{const t=document.createElement("span");t.className="issue-tag tag-missing";t.textContent=`Missing: ${code}`;tags.appendChild(t);});
       body.appendChild(idEl);body.appendChild(descEl);body.appendChild(tags);
@@ -1687,6 +1711,7 @@ function handleFile(file){const reader=new FileReader();reader.onload=e=>{const 
 fileInput.addEventListener("change",e=>{const f=e.target.files?.[0];if(f)handleFile(f);});
 [filterInput,groupFilter,itemNameFilter,elrFilter,assetClassFilter,statusFilter].forEach(el=>el.addEventListener(el.tagName==="SELECT"?"change":"input",()=>renderAssetList()));
 hideObsoleteToggle.addEventListener("change",()=>renderAssetList());
+discountObsoleteToggle.addEventListener("change",()=>{buildIssueList();renderAssetList();if(triageView.classList.contains("hidden")) updateIssueNav(); else renderTriageView();});
 errorOnlyToggle.addEventListener("change",()=>renderAssetList());
 backToTriage.addEventListener("click",renderTriageView);
 prevIssue.addEventListener("click",()=>{if(issueIndex>0){issueIndex--;selectAsset(issueList[issueIndex]);}});

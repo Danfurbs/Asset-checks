@@ -8,6 +8,7 @@ Open `index.html` in a browser (or serve the folder) to upload an Excel/CSV expo
 - Highlights missing parents as a grey "Asset not in download" box.
 - Lets you add placeholder children to required slots, renders them directly in the reference template, remove them with undo, and replace a placeholder with a real asset if one is identified later.
 - Shades obsolete assets red when **Asset Status** begins with `OR`.
+- Lets you discount obsolete-only validation issues while still flagging mixed obsolete/non-obsolete links so incorrect live-to-obsolete relationships remain visible.
 
 - Supports multiple reference trees (including Point Operating Equipment) loaded from `reference-trees.json`.
 - Shows **Associated equipment** links in the tree as dashed relationship chips when linked assets exist in the current view.
